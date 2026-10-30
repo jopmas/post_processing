@@ -66,3 +66,8 @@ videos to make). See the [user guide](docs/index.md):
 Report bugs and suggest improvements in the issues. Keep the structure of the scripts (settings at the top, the
 same variable names) when changing them, and test the changes on a scenario converted by tapioca (see
 [AGENTS.md](AGENTS.md)).
+
+## License
+
+This is free software: you can redistribute it and/or modify it under the terms
+of the **BSD 3-clause License**. A copy of this license is provided in [LICENSE](LICENSE).
