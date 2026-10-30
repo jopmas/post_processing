@@ -16,3 +16,7 @@ _output/
 *.gif
 track_xzPT_step_*.txt
 infos_track_*.txt
+
+# Sphinx documentation (created by make html)
+docs/build/
+docs/source/generated/

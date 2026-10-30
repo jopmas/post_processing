@@ -9,7 +9,7 @@ lithology, and measurements of the crust (crustal thickness and width of the rif
 The scripts read **only** the `.nc` files created by the Julia scripts of tapIOca
 (`src/postrunning/meshes2netcdf.jl` and `src/postrunning/particles2netcdf.jl`): `temperature.nc`, `strain.nc`,
 `lithology.nc`, `particles_trajectories.nc`, ... The old files (`_strain.nc`, `_output_strain.nc`, `_steps.nc`) are
-not read. See [docs/references/data_format.md](docs/references/data_format.md) for the structure of these files.
+not read. See [docs/source/references/data_format.md](docs/source/references/data_format.md) for the structure of these files.
 
 | Script | What it does |
 | --- | --- |
@@ -34,7 +34,7 @@ pip install -e .
 ```
 
 Then clone this repository next to tapioca, e.g. in `~/opt/post_processing`. See
-[docs/user_guide/install.md](docs/user_guide/install.md).
+[docs/source/user_guide/install.md](docs/source/user_guide/install.md).
 
 ## How to use
 
@@ -53,13 +53,24 @@ Then clone this repository next to tapioca, e.g. in `~/opt/post_processing`. See
    ```
 
 Each script has a block of settings at the top (region of the particles, layer codes, colors, which frames and
-videos to make). See the [user guide](docs/index.md):
+videos to make). See the [user guide](docs/source/index.md):
 
-- [Workflow](docs/user_guide/workflow.md)
-- [Particle tracking](docs/user_guide/tracking.md)
-- [Frames and videos](docs/user_guide/frames.md)
-- [Geometries notebook](docs/user_guide/geometries.md)
-- [Reference of `functions/mandyocIO.py`](docs/references/mandyocIO.md)
+- [Workflow](docs/source/user_guide/workflow.md)
+- [Particle tracking](docs/source/user_guide/tracking.md)
+- [Frames and videos](docs/source/user_guide/frames.md)
+- [Geometries notebook](docs/source/user_guide/geometries.md)
+- [Reference of `functions/mandyocIO.py`](docs/source/references/mandyocIO.md)
+
+## Documentation
+
+The documentation (user guide and API of `functions/mandyocIO.py`) is built with Sphinx, as in tapioca. With the
+`tapioca` environment, in the `docs` folder:
+
+```
+make html
+```
+
+and open `docs/build/html/index.html`.
 
 ## Contributing
 

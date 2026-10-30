@@ -18,7 +18,10 @@ Scripts and notebooks to post-process Mandyoc models from the NetCDF files creat
   `read_lithology`), crust measurements (`measure_crust_from_lithology`, `measure_crustal_thickness`,
   `measure_margins_width`), `plot_lithology_legend`, `add_colorbar`, `plot_property`, the P-T-t path functions and
   helpers (`find_nearest`, `change_dataset`, `trim_axs`).
-- `docs/`: user guide and references (Markdown).
+- `docs/`: Sphinx documentation (myst-parser, sphinx_rtd_theme), as in tapioca. The pages are Markdown files in
+  `docs/source` (`user_guide/`, `references/`); `references/api.md` lists the functions of `functions/mandyocIO.py`
+  with `autosummary`, which writes their pages in `docs/source/generated/` from the docstrings (NumPy style). Add
+  new public functions of `functions/mandyocIO.py` to `references/api.md`.
 
 ## Data conventions (tapioca files)
 
@@ -68,6 +71,9 @@ There is no test suite. Test a change by running the scripts on a scenario conve
 `meshes2netcdf.jl` there), never writing in the folders of the user's scenarios. Compare the outputs with the
 previous version (the `_track_xzPT_all_steps.nc` and the frames) and look at the figures.
 
+After changing the docs or the docstrings, build the documentation (`make html` in `docs`) and check that there are
+no warnings.
+
 ## Commands
 
 ```bash
@@ -76,6 +82,7 @@ julia -t 14 ~/opt/tapioca/src/postrunning/meshes2netcdf.jl ${PWD}       # in the
 julia -t 14 ~/opt/tapioca/src/postrunning/particles2netcdf.jl ${PWD} <reference_step>
 python ~/opt/post_processing/track_particles_nc_dk.py                   # in the folder of the scenario
 python ~/opt/post_processing/plot_PTT_frames_dk.py
+cd ~/opt/post_processing/docs && make html                             # documentation in docs/build/html
 ```
 
 Mandyoc runs are done on the group's cluster, Hypatia.
