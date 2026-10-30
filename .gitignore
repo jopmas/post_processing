@@ -1,0 +1,18 @@
+# Byte-compiled files
+__pycache__/
+*.py[cod]
+
+# Notebooks
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# Outputs of the scripts (if they are run in this folder)
+*.nc
+_output/
+*.zip
+*.mp4
+*.gif
+track_xzPT_step_*.txt
+infos_track_*.txt
