@@ -12,6 +12,38 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from matplotlib.ticker import FormatStrFormatter
 
 
+#Colors of the lithologies
+cr = 255.
+COLOR_AIR = (1., 1., 1.)
+COLOR_SED = (241./cr, 184./cr, 68./cr) #sediments
+COLOR_DEC = (137./cr, 81./cr, 151./cr) #decolement
+COLOR_BAS = 'xkcd:dark grey blue' #basaltic (oceanic) crust
+COLOR_UC = (228./cr, 156./cr, 124./cr) #upper crust
+COLOR_LC = (240./cr, 209./cr, 188./cr) #lower crust
+COLOR_LIT = (155./cr, 194./cr, 155./cr) #lithospheric mantle
+COLOR_MLIT_UC = (180./cr, 194./cr, 162./cr) #lithospheric mantle of the upper craton
+COLOR_MLIT_LC = (155./cr, 194./cr, 155./cr) #lithospheric mantle of the lower craton
+COLOR_AST = (207./cr, 226./cr, 205./cr) #asthenosphere
+
+#Color of each Mandyoc layer code (order of the layers in interfaces.txt, 0 = bottom layer) of the model types
+LITHOLOGY_COLORS = {
+    #asthenosphere, lower craton, upper craton, lithospheric mantle, lower crust 1, seed, lower crust 2, upper crust, decolement, sediments, air
+    'double_keel': [COLOR_AST, COLOR_MLIT_LC, COLOR_MLIT_UC, COLOR_LIT, COLOR_LC, COLOR_LC, COLOR_LC, COLOR_UC, COLOR_DEC, COLOR_SED, COLOR_AIR],
+    #asthenosphere, lithospheric mantle, seed, lithospheric mantle, lower crust, upper crust, air
+    'rifting': [COLOR_AST, COLOR_LIT, COLOR_LIT, COLOR_LIT, COLOR_LC, COLOR_UC, COLOR_AIR],
+    #asthenosphere, lithospheric mantle (3 layers), lower crust, upper crust, basaltic crust, air
+    'accordion': [COLOR_AST, COLOR_LIT, COLOR_LIT, COLOR_LIT, COLOR_LC, COLOR_UC, COLOR_BAS, COLOR_AIR],
+}
+
+def _legend_colors(colors):
+    '''Colors of the lithology legend from top to bottom: the different colors of the layers, without the air (last code).'''
+    legend = []
+    for color in colors[-2::-1]:
+        if color not in legend:
+            legend.append(color)
+    return legend
+
+
 def plot_lithology_legend(ax, colors, vmin=-0.5, vmax=0.7, alpha=0.2, position=(0.98, 0.08), loc='lower right',
                           width=0.74, height=0.66, fsize=10):
     '''
@@ -161,6 +193,270 @@ def find_nearest(array, value):
     idx = (np.abs(array - value)).argmin()
     return idx
 
+
+def read_tapioca_datasets(model_path, variables):
+    '''
+    Read and merge the .nc files created by tapioca (meshes2netcdf.jl) of the given variables.
+
+    Parameters
+    ----------
+    model_path: str
+        Path to the scenario directory (with the .nc files).
+
+    variables: list of strings
+        Mandyoc properties (e.g. 'density', 'temperature', 'strain', 'melt', 'incremental_melt', 'radiogenic_heat').
+        'melt', 'incremental_melt' and 'radiogenic_heat' are read from Phi.nc, dPhi.nc and heat.nc.
+
+    Returns
+    -------
+    dataset: :class:`xarray.Dataset`
+        Data (time, z, x). The heat is named radiogenic_heat, as in plot_property.
+    '''
+    file_names = {'melt': 'Phi', 'incremental_melt': 'dPhi', 'radiogenic_heat': 'heat'}
+    datasets = [xr.open_dataset(f"{model_path}/{file_names.get(variable, variable)}.nc") for variable in dict.fromkeys(variables)]
+    dataset = xr.merge(datasets, compat='override')
+    if('heat' in dataset):
+        dataset = dataset.rename({'heat': 'radiogenic_heat'})
+
+    return dataset
+
+def read_params(model_path):
+    '''
+    Return Nx, Nz, Lx, Lz of the scenario reading temperature.nc (created by tapioca).
+
+    Parameters
+    ----------
+    model_path: str
+        Path to the scenario directory (with the .nc files).
+    '''
+    with xr.open_dataset(f"{model_path}/temperature.nc") as dataset: #x from 0 to Lx and z from -Lz to 0 [m]
+        Nx = int(dataset.sizes["x"])
+        Nz = int(dataset.sizes["z"])
+        Lx = float(dataset.x.values[-1] - dataset.x.values[0])
+        Lz = float(dataset.z.values[-1] - dataset.z.values[0])
+
+    return Nx, Nz, Lx, Lz
+
+def read_times_steps(model_path):
+    '''
+    Return the times [Myr] and steps of the .nc files created by tapioca.
+
+    Parameters
+    ----------
+    model_path: str
+        Path to the scenario directory (with the .nc files).
+    '''
+    with xr.open_dataset(f"{model_path}/temperature.nc") as dataset:
+        times = np.round(dataset.time.values, 2)
+        steps = dataset.step.values.astype('int')
+
+    return times, steps
+
+def read_lithology(model_path, step):
+    '''
+    Read lithology.nc (created by tapioca) and return the Mandyoc layer codes (order of the layers in interfaces.txt,
+    0 = bottom layer) in a (Nzl, Nxl) array, first row at the bottom. The lithology mesh is 5 times finer than the
+    mesh of the other fields: Nxl = 5*(Nx-1)+1 and Nzl = 5*(Nz-1)+1.
+
+    Parameters
+    ----------
+    model_path: str
+        Path to the scenario directory (with the .nc files).
+
+    step: int
+        Time step of numerical scenario.
+    '''
+    with xr.open_dataset(f"{model_path}/lithology.nc") as dataset:
+        idx = int(np.where(dataset.step.values == int(step))[0][0])
+        litho = dataset.lithology.isel(time=idx).values
+
+    return litho
+
+def measure_crust_from_lithology(model_path, step, crust_codes):
+    '''
+    Measure the crust in each column of the mesh counting the cells of the crust in lithology.nc, as done for the
+    oceanic crust (thickness_oceanic_crust) in frames_generator_litho_melt_thickness.py: each cell of the lithology
+    mesh has dz/5 of thickness.
+
+    Parameters
+    ----------
+    model_path: str
+        Path to the scenario directory (with the .nc files).
+
+    step: int
+        Time step of numerical scenario.
+
+    crust_codes: list of int
+        Mandyoc layer codes of the crust.
+
+    Returns
+    -------
+    topography_interface: array_like
+        Top of the crust [km] corrected from air layer (NaN where there is no crust).
+
+    lower_crust_interface: array_like
+        Base of the crust [km] corrected from air layer (NaN where there is no crust).
+
+    total_crustal_thickness: array_like
+        Crustal thickness [km] (sum of the crust cells in the column).
+    '''
+    Nx, Nz, Lx, Lz = read_params(model_path)
+    h_air = 40.0 #km
+    dz = Lz/(Nz-1)
+
+    litho = read_lithology(model_path, step)[:, ::5] #one column of each 5: the columns in the x of the mesh
+    cond = np.isin(litho, crust_codes)
+
+    total_crustal_thickness = np.sum(cond, axis=0)/(5/dz)/1000 #km
+
+    z_litho = np.linspace(-Lz/1000.0, 0, litho.shape[0])
+    has_crust = np.any(cond, axis=0)
+    idx_top = litho.shape[0] - 1 - np.argmax(cond[::-1, :], axis=0) #last crust cell from the bottom
+    idx_base = np.argmax(cond, axis=0) #first crust cell from the bottom
+
+    topography_interface = np.where(has_crust, z_litho[idx_top] + h_air, np.nan)
+    lower_crust_interface = np.where(has_crust, z_litho[idx_base] + h_air, np.nan)
+
+    return topography_interface, lower_crust_interface, total_crustal_thickness
+
+def measure_crustal_thickness(model_path, step, Nx, Nz, Lx, Lz, x_begin=600.0, x_end=900.0, crust_codes=[4, 5]):
+    '''
+    Measure the maximum crustal thickness in a given region of the model, counting the cells of the crust in
+    lithology.nc (see measure_crust_from_lithology).
+
+    Parameters
+    ----------
+    model_path: str
+        Path to the scenario directory.
+
+    step: int
+        Step of Mandyoc output files.
+
+    Nx, Nz: int
+        Number of points in x and z directions.
+
+    Lx, Lz: float
+        Length of the model in x and z directions [m].
+
+    x_begin, x_end: float
+        Region to measure the crustal thickness [km].
+
+    crust_codes: list of int
+        Mandyoc layer codes of the crust.
+
+    Returns
+    -------
+    position_max_thickness: float
+        Position of the maximum crustal thickness in the selected region.
+
+    topo_max_thickness: float
+        Topography value in the maximum crustal thickness in the selected region.
+
+    crustal_thickness: float
+        Maximum crustal thickness in the selected region [km]
+
+    lower_crust_interface: array_like
+        Lower crust interface [km] corrected from air layer
+
+    topography_interface: array_like
+        Topography interface [km] corrected from air layer
+
+    total_crustal_thickness: array_like
+        Crustal thickness [km]
+    '''
+    x_aux = np.linspace(0, Lx/1000.0, Nx)
+
+    topography_interface, lower_crust_interface, total_crustal_thickness = measure_crust_from_lithology(model_path, step, crust_codes)
+
+    #selecting the region to measure the crustal thickness
+    cond_x = (x_aux >= x_begin) & (x_aux <= x_end)
+
+    x_region = x_aux[cond_x]
+    topo_region = topography_interface[cond_x]
+    crustal_thickness_region = total_crustal_thickness[cond_x]
+
+    #index of the maximum crustal thickness
+    idx = np.where(crustal_thickness_region == np.max(crustal_thickness_region))[0][0]
+
+    #information of the maximum crustal thickness
+    position_max_thickness = x_region[idx]
+    topo_max_thickness = topo_region[idx]
+    crustal_thickness = crustal_thickness_region[idx]
+
+    return position_max_thickness, topo_max_thickness, crustal_thickness, lower_crust_interface, topography_interface, total_crustal_thickness
+
+def measure_margins_width(model_path, step, Nx, Nz, Lx, Lz, xl_begin=600, xl_end=800, xr_begin=800, xr_end=1000, crust_codes=[4, 5]):
+    '''
+    Measure the width of the rifted margins in a given region of the model. Each margin ends where the crust
+    (measured from lithology.nc, see measure_crust_from_lithology) is thinner than 5 km.
+
+    Parameters
+    ----------
+    model_path: str
+        Path to the scenario directory.
+
+    step: int
+        Step of Mandyoc output files.
+
+    Nx, Nz: int
+        Number of points in x and z directions.
+
+    Lx, Lz: float
+        Length of the model in x and z directions [m].
+
+    xl_begin, xl_end: float
+        Region of the left margin [km]: it begins in xl_begin.
+
+    xr_begin, xr_end: float
+        Region of the right margin [km]: it begins in xr_end.
+
+    crust_codes: list of int
+        Mandyoc layer codes of the crust.
+
+    Returns
+    -------
+    marginl_begin, marginl_end, marginl_wdt: float
+        Initial position, final position and width of the left margin.
+
+    marginr_begin, marginr_end, marginr_wdt: float
+        Initial position, final position and width of the right margin.
+    '''
+    x = np.linspace(0, Lx/1000.0, Nx)
+
+    topography_interface, lower_interface, crustal_thickness = measure_crust_from_lithology(model_path, step, crust_codes)
+
+    #left side
+    cond_xl = (x >= xl_begin) & (x <= xl_end)
+    marginl_begin = xl_begin
+    left_margin_region = crustal_thickness[cond_xl]
+    idx_min_lithol = np.where(left_margin_region <=5.0)[0][0]
+    marginl_end = x[cond_xl][idx_min_lithol]
+    marginl_wdt = np.abs(marginl_end - marginl_begin)
+
+    #right side
+    cond_xr = (x >= xr_begin) & (x <= xr_end)
+    marginr_begin = xr_end
+    right_margin_region = crustal_thickness[cond_xr]
+    idx_min_lithor = np.where(right_margin_region <=5.0)[0][-1]
+    marginr_end = x[cond_xr][idx_min_lithor]
+    marginr_wdt = np.abs(marginr_end - marginr_begin)
+
+    return marginl_begin, marginl_end, marginl_wdt, marginr_begin, marginr_end, marginr_wdt
+
+def trim_axs(axs, N):
+    '''Little helper to index the axs as 1D list
+
+       Parameters
+       ----------
+       axs: `~matplotlib.axes.Axes` list of Axes
+
+       N: int
+           Total number of subplots.
+    '''
+    axs = axs.flat
+    for ax in axs[N:]:
+        ax.remove()
+    return axs[:N]
 
 def _extract_interface(z, Z, Nx, field_datai, value_to_search):
     '''
@@ -894,7 +1190,9 @@ def plot_property(dataset, prop, xlims, ylims, model_path,
                 step_plot=1,
                 plot_melt=False,
                 color_incremental_melt = 'xkcd:bright pink',
-                color_depleted_mantle='xkcd:bright purple',):
+                color_depleted_mantle='xkcd:bright purple',
+                lithology_colors='rifting',
+                label_isotherms=False):
     '''
     Plot data from mandyoc according to a given property and domain limits.
 
@@ -914,8 +1212,16 @@ def plot_property(dataset, prop, xlims, ylims, model_path,
         List with the limits of y axis
 
     model_path: str
-        Path to model (with surface.nc and particles_trajectories.nc, used for prop='surface' with
-        topo_from_density=False and for plot_particles=True)
+        Path to model (with lithology.nc for prop='lithology', surface.nc for prop='surface' with
+        topo_from_density=False and particles_trajectories.nc for plot_particles=True)
+
+    lithology_colors: str or list
+        Colors of the Mandyoc layer codes for prop='lithology': a key of LITHOLOGY_COLORS ('double_keel',
+        'rifting', 'accordion') or a list with one color per code (order of the layers in interfaces.txt,
+        0 = bottom layer, the air is the last one).
+
+    label_isotherms: bool
+        Write the temperature of the isotherms.
 
     output_path: str
         Path to save outputs
@@ -1009,6 +1315,12 @@ def plot_property(dataset, prop, xlims, ylims, model_path,
             isot_colors.append('red')
             
         cs = ax.contour(xx, zz, Temperi, 100, levels=isotherms, colors=isot_colors)
+
+        if(label_isotherms == True):
+            fmt = {}
+            for level in cs.levels:
+                fmt[level] = str(level) + r'$^{\circ}$C'
+            ax.clabel(cs, cs.levels, fmt=fmt, inline=True)
         
         # if(instant == instants[0]):
         #     fmt = {}
@@ -1156,46 +1468,21 @@ def plot_property(dataset, prop, xlims, ylims, model_path,
     elif(prop == 'surface'):
         ax.plot(xi, data, alpha = 1, linewidth = 2.0, color = "blueviolet")
         
-    elif(prop == 'lithology'): #shaded lithology plot
-        cr = 255.
-        color_uc = (228. / cr, 156. / cr, 124. / cr)
-        color_lc = (240. / cr, 209. / cr, 188. / cr)
-        color_lit = (155. / cr, 194. / cr, 155. / cr)
-        color_ast = (207. / cr, 226. / cr, 205. / cr)
+    elif(prop == 'lithology'): #lithology.nc (Mandyoc layer codes) shaded by the strain
+        if(isinstance(lithology_colors, str)):
+            colors = LITHOLOGY_COLORS[lithology_colors]
+        else:
+            colors = list(lithology_colors)
 
-        # cr = 255.
-        # color_sed = (241./cr,184./cr,68./cr)
-        # color_dec = (137./cr,81./cr,151./cr)
-        # color_uc = (228./cr,156./cr,124./cr)
-        # color_lc = (240./cr,209./cr,188./cr)
-        # color_lit = (155./cr,194./cr,155./cr)
-        # color_mlit_uc = (180. / cr, 194. / cr, 162. / cr)
-        # color_mlit_lc = (155. / cr, 194. / cr, 155. / cr)
-        # color_ast = (207./cr,226./cr,205./cr)
-        
-        Rhoi = dataset.density.values
-        # interfaces=[2900, 3365]
-        
-        # ##Extract layer topography
-        # z = np.linspace(Lz/1000.0, 0, Nz)
-        # Z = np.linspace(Lz/1000.0, 0, 8001) #zi
-        # x = np.linspace(Lx/1000.0, 0, Nx)
-            
-        # topo_interface = _extract_interface(z, Z, Nx, Rhoi, 300.) #200 kg/m3 = air/crust interface
-        # condx = (xi >= 100) & (xi <= 400)
-        # z_mean = np.mean(topo_interface[condx])
-        # topo_interface -= np.abs(z_mean)
-        # topo_interface = -1.0*topo_interface
-        
-        #Density field
-        ax.contourf(xx,
-                    zz+correction_factor,
-                    Rhoi,
-                    levels = [200., 2750, 2900, 3365, 3900],
-                    colors = [color_uc, color_lc, color_lit, color_ast],
-                    # levels=[200.,2350,2450,2750,2900,3325,3355,3365,3378],
-                    # colors=[color_sed,color_dec,color_uc,color_lc,color_lit,color_mlit_uc,color_mlit_lc,color_ast],
-                    )
+        litho = read_lithology(model_path, int(dataset.step)) #5 times finer mesh, first row at the bottom
+
+        ax.imshow(litho,
+                  cmap = ListedColormap(colors),
+                  origin = 'lower',
+                  extent = (0, Lx / 1.0E3, -Lz / 1.0E3 + 40+correction_factor, 0 + 40+correction_factor),
+                  vmin = -0.5, vmax = len(colors) - 0.5, #code k gets colors[k]
+                  interpolation = 'nearest',
+                  aspect = 'auto')
         #Strain shaded areas
         im=ax.imshow(data,
                      cmap = 'Greys',
@@ -1209,7 +1496,7 @@ def plot_property(dataset, prop, xlims, ylims, model_path,
         #legend box: fixed size [inches], whatever the size of the figure.
         #Its lower right corner is at the lower right corner of bbox_to_anchor (x, y, width, height in fraction of ax)
         if(plot_colorbar == True):
-            plot_lithology_legend(ax, colors=[color_uc, color_lc, color_lit, color_ast], vmin=-0.5, vmax=0.7, alpha=0.2,
+            plot_lithology_legend(ax, colors=_legend_colors(colors), vmin=-0.5, vmax=0.7, alpha=0.2,
                                   position=(bbox_to_anchor[0] + bbox_to_anchor[2], bbox_to_anchor[1]), loc='lower right')
             
     

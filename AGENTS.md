@@ -11,9 +11,13 @@ Scripts and notebooks to post-process Mandyoc models from the NetCDF files creat
 - `plot_PTT_frames_dk.py`, `plot_PTT_frames_rft.py`: frames of the lithology with the P-T-t paths of
   `_track_xzPT_all_steps.nc` (temperature-coded for double keel, depth-coded for rifting), videos and gifs.
 - `frames_generator.py`: frames of the lithology, strain, isotherms and melt (accordion and rifting models).
-- `Geometries.ipynb`: a field at chosen instants, crustal thickness and width of the rifted margins.
-- `functions/mandyocIO.py`: plotting functions shared by the scripts (`plot_lithology_legend`, `add_colorbar`,
-  `plot_property`, the P-T-t path functions, `find_nearest`, `change_dataset`).
+- `Geometries.ipynb`: a field at chosen instants (plotted with `plot_property`), crustal thickness and width of the
+  rifted margins. It has no functions of its own: they are in `functions/mandyocIO.py`.
+- `functions/mandyocIO.py`: functions shared by the scripts and the notebook: lithology colors
+  (`LITHOLOGY_COLORS`), readers of the tapioca files (`read_tapioca_datasets`, `read_params`, `read_times_steps`,
+  `read_lithology`), crust measurements (`measure_crust_from_lithology`, `measure_crustal_thickness`,
+  `measure_margins_width`), `plot_lithology_legend`, `add_colorbar`, `plot_property`, the P-T-t path functions and
+  helpers (`find_nearest`, `change_dataset`, `trim_axs`).
 - `docs/`: user guide and references (Markdown).
 
 ## Data conventions (tapioca files)
@@ -27,8 +31,9 @@ Scripts and notebooks to post-process Mandyoc models from the NetCDF files creat
 - tapioca keeps the raw values in the air. Where a figure needs the air empty (strain shading, melt), set the
   values to zero where `density < 1200` kg/m3, as the old Julia files did.
 - `lithology.nc` has the Mandyoc layer codes (order of the layers in `interfaces.txt`, 0 = bottom layer) on a mesh
-  5 times finer: `Nxl = 5*(Nx-1)+1`, `Nzl = 5*(Nz-1)+1`, and `lithology[:, ::5]` is on the mesh x. Each script maps
-  the codes to colors with a `lithology_colors` dict built from its layer code variables; plot it with
+  5 times finer: `Nxl = 5*(Nx-1)+1`, `Nzl = 5*(Nz-1)+1`, and `lithology[:, ::5]` is on the mesh x. The lithology is
+  plotted from `lithology.nc`, never from the density. `plot_property` and the notebook use `LITHOLOGY_COLORS` of
+  `functions/mandyocIO.py`; the frame scripts build a `lithology_colors` dict from their layer code variables. Plot with
   `ListedColormap(colors)`, `vmin=-0.5`, `vmax=len(colors)-0.5`. The codes depend on the model type
   (double keel: 11 layers; rifting: 7; accordion AR: 8, with a basaltic layer of 2900 kg/m3).
 - `particles_trajectories.nc`: `x`, `z`, `lithology` with dims `(time, id)`, `-999` (and `-1` for the lithology)
