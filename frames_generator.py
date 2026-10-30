@@ -32,7 +32,7 @@ sys.path.append(os.path.abspath(path_to_functions))
 
 if '' in sys.path:
     sys.path.remove('')
-from functions.mandyocIO import change_dataset, plot_property, plot_lithology_legend
+from functions.mandyocIO import change_dataset, plot_property, plot_lithology_legend, get_lithology_colors
 
 ####################################################################################################################################
 model_path = os.getcwd() # Get local file
@@ -210,33 +210,13 @@ color_ast = (207./cr,226./cr,205./cr) # 0
 
 
 #lithology.nc from tapioca has the Mandyoc layer codes (order of the layers in interfaces.txt, 0 = bottom layer).
-#Each code gets the color of its layer.
-oceanic_crust = True #models with a basaltic layer (rho = 2900 kg/m3) below the air (e.g. AR models)
-# oceanic_crust = False #rifting models (e.g. Ho35S1)
+#Each code gets the color of its layer (LITHOLOGY_COLORS of functions/mandyocIO.py).
+lithology_colors = 'auto' #model type from the number of layers in lithology.nc: 11 double keel, 7 rifting, 8 accordion
+# lithology_colors = 'accordion' #models with a basaltic layer (rho = 2900 kg/m3) below the air (e.g. AR models)
+# lithology_colors = 'rifting' #rifting models (e.g. Ho35S1)
+# lithology_colors = 'double_keel'
 
-asthenosphere_code = 0
-mantle_lithosphere1_code = 1
-seed_code = 2
-mantle_lithosphere2_code = 3
-lower_crust_code = 4
-upper_crust_code = 5
-if(oceanic_crust):
-    basalt_code = 6
-    air_code = 7
-else:
-    air_code = 6
-
-lithology_colors = {asthenosphere_code: color_ast,
-                    mantle_lithosphere1_code: color_lit,
-                    seed_code: color_lit,
-                    mantle_lithosphere2_code: color_lit,
-                    lower_crust_code: color_lc,
-                    upper_crust_code: color_uc,
-                    air_code: color_air}
-if(oceanic_crust):
-    lithology_colors[basalt_code] = color_bas
-
-colors = [lithology_colors[code] for code in range(air_code+1)]
+colors = get_lithology_colors(model_path, lithology_colors)
 
 #Creating a custom colormap according to the list of colors defined above.
 # This colormap will be used to plot the lithology mesh, where each lithology code is represented by a specific color.

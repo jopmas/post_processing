@@ -48,14 +48,14 @@ Frames: `_output/<model>_<plot_type>_<property>_and_PTt_<step>.png`.
 
 ## `frames_generator.py`
 
-Accordion and rifting models. Each frame has the lithology, the strain, the isotherms and, with `plot_melt`, the
+Accordion, rifting and double keel models (used by the [pipeline](pipeline.md) for the video). Each frame has the lithology, the strain, the isotherms and, with `plot_melt`, the
 melt.
 
 Input files: `strain.nc`, `lithology.nc`, `temperature.nc`, `density.nc` (and `Phi.nc`, `dPhi.nc`).
 
 | Variable | Meaning |
 | --- | --- |
-| `oceanic_crust` | `True` for accordion models with a basaltic layer (8 layers, e.g. AR); `False` for rifting models (7 layers). |
+| `lithology_colors` | `'auto'` (from the number of layers in `lithology.nc`: 11 double keel, 7 rifting, 8 accordion), `'double_keel'`, `'rifting'`, `'accordion'` or a list with one color per layer code. |
 | `plot_melt` | Melt and incremental melt. |
 | `fig_format` | Format of the frames (`jpeg`). |
 

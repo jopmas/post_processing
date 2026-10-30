@@ -35,6 +35,41 @@ LITHOLOGY_COLORS = {
     'accordion': [COLOR_AST, COLOR_LIT, COLOR_LIT, COLOR_LIT, COLOR_LC, COLOR_UC, COLOR_BAS, COLOR_AIR],
 }
 
+#Model type of LITHOLOGY_COLORS from the number of layers (lithology codes), used by lithology_colors='auto'
+MODEL_FROM_NUMBER_OF_LAYERS = {11: 'double_keel', 7: 'rifting', 8: 'accordion'}
+
+def get_lithology_colors(model_path, lithology_colors='auto'):
+    '''
+    Colors of the Mandyoc layer codes (order of the layers in interfaces.txt, 0 = bottom layer).
+
+    Parameters
+    ----------
+    model_path: str
+        Path to the scenario directory (with lithology.nc, used by lithology_colors='auto').
+
+    lithology_colors: str or list
+        A key of LITHOLOGY_COLORS ('double_keel', 'rifting', 'accordion'), a list with one color per code, or
+        'auto': the model type is chosen from the number of layers in lithology.nc (the air, top layer, has the
+        largest code), see MODEL_FROM_NUMBER_OF_LAYERS.
+
+    Returns
+    -------
+    colors: list
+        One color per layer code.
+    '''
+    if(isinstance(lithology_colors, str) and lithology_colors == 'auto'):
+        with xr.open_dataset(f"{model_path}/lithology.nc") as dataset:
+            number_of_layers = int(dataset.lithology.isel(time=0).max()) + 1
+        if(number_of_layers not in MODEL_FROM_NUMBER_OF_LAYERS):
+            raise ValueError(f"lithology_colors='auto': no colors for models with {number_of_layers} layers. "
+                             f"Choose one of {list(LITHOLOGY_COLORS)} or give a list with {number_of_layers} colors.")
+        lithology_colors = MODEL_FROM_NUMBER_OF_LAYERS[number_of_layers]
+
+    if(isinstance(lithology_colors, str)):
+        return LITHOLOGY_COLORS[lithology_colors]
+
+    return list(lithology_colors)
+
 def _legend_colors(colors):
     '''Colors of the lithology legend from top to bottom: the different colors of the layers, without the air (last code).'''
     legend = []
@@ -1217,8 +1252,8 @@ def plot_property(dataset, prop, xlims, ylims, model_path,
 
     lithology_colors: str or list
         Colors of the Mandyoc layer codes for prop='lithology': a key of LITHOLOGY_COLORS ('double_keel',
-        'rifting', 'accordion') or a list with one color per code (order of the layers in interfaces.txt,
-        0 = bottom layer, the air is the last one).
+        'rifting', 'accordion'), a list with one color per code (order of the layers in interfaces.txt,
+        0 = bottom layer, the air is the last one) or 'auto' (see get_lithology_colors).
 
     label_isotherms: bool
         Write the temperature of the isotherms.
@@ -1469,10 +1504,7 @@ def plot_property(dataset, prop, xlims, ylims, model_path,
         ax.plot(xi, data, alpha = 1, linewidth = 2.0, color = "blueviolet")
         
     elif(prop == 'lithology'): #lithology.nc (Mandyoc layer codes) shaded by the strain
-        if(isinstance(lithology_colors, str)):
-            colors = LITHOLOGY_COLORS[lithology_colors]
-        else:
-            colors = list(lithology_colors)
+        colors = get_lithology_colors(model_path, lithology_colors)
 
         litho = read_lithology(model_path, int(dataset.step)) #5 times finer mesh, first row at the bottom
 

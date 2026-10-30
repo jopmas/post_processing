@@ -15,6 +15,11 @@ layer code (order of the layers in `interfaces.txt`, 0 = bottom layer) of each m
 | `'rifting'` | asthenosphere, lithospheric mantle, seed, lithospheric mantle, lower crust, upper crust, air |
 | `'accordion'` | asthenosphere, lithospheric mantle (3 layers), lower crust, upper crust, basaltic crust, air |
 
+`get_lithology_colors(model_path, lithology_colors='auto')` returns the colors of a key, of a list, or, with
+`'auto'`, of the model type chosen from the number of layers in `lithology.nc` (11: `'double_keel'`, 7:
+`'rifting'`, 8: `'accordion'`, `MODEL_FROM_NUMBER_OF_LAYERS`). `plot_property`, `plot_snapshots.py` and
+`frames_generator.py` use it.
+
 ## Reading the tapioca files
 
 - `read_tapioca_datasets(model_path, variables)`: merged dataset of the `.nc` files of `variables` (`melt`,

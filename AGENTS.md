@@ -10,7 +10,13 @@ Scripts and notebooks to post-process Mandyoc models from the NetCDF files creat
   `pressure.nc`/`temperature.nc` and write `_track_xzPT_all_steps.nc`.
 - `plot_PTT_frames_dk.py`, `plot_PTT_frames_rft.py`: frames of the lithology with the P-T-t paths of
   `_track_xzPT_all_steps.nc` (temperature-coded for double keel, depth-coded for rifting), videos and gifs.
-- `frames_generator.py`: frames of the lithology, strain, isotherms and melt (accordion and rifting models).
+- `frames_generator.py`: frames of the lithology, strain, isotherms and melt (accordion, rifting and double keel
+  models, `lithology_colors = 'auto'`).
+- `plot_snapshots.py`: snapshots of the scenario (equally spaced steps from the first to the last one) with
+  `plot_property`, based on `Geometries.ipynb` without the measurements of the crust.
+- `pipeline.sh`: from the zip of a scenario: extraction, `0_organize_outputs.sh`, `meshes2netcdf.jl` and
+  `particles2netcdf.jl` (last step as reference), removal of the extracted folders of the outputs (only after
+  checking that the main `.nc` files exist; the zip is kept), `plot_snapshots.py` and `frames_generator.py`.
 - `Geometries.ipynb`: a field at chosen instants (plotted with `plot_property`), crustal thickness and width of the
   rifted margins. It has no functions of its own: they are in `functions/mandyocIO.py`.
 - `functions/mandyocIO.py`: functions shared by the scripts and the notebook: lithology colors
@@ -36,7 +42,8 @@ Scripts and notebooks to post-process Mandyoc models from the NetCDF files creat
 - `lithology.nc` has the Mandyoc layer codes (order of the layers in `interfaces.txt`, 0 = bottom layer) on a mesh
   5 times finer: `Nxl = 5*(Nx-1)+1`, `Nzl = 5*(Nz-1)+1`, and `lithology[:, ::5]` is on the mesh x. The lithology is
   plotted from `lithology.nc`, never from the density. `plot_property` and the notebook use `LITHOLOGY_COLORS` of
-  `functions/mandyocIO.py`; the frame scripts build a `lithology_colors` dict from their layer code variables. Plot with
+  `functions/mandyocIO.py` (`get_lithology_colors`, `'auto'` chooses the model type from the number of layers);
+  `plot_PTT_frames_dk.py` and `plot_PTT_frames_rft.py` build a `lithology_colors` dict from their layer code variables. Plot with
   `ListedColormap(colors)`, `vmin=-0.5`, `vmax=len(colors)-0.5`. The codes depend on the model type
   (double keel: 11 layers; rifting: 7; accordion AR: 8, with a basaltic layer of 2900 kg/m3).
 - `particles_trajectories.nc`: `x`, `z`, `lithology` with dims `(time, id)`, `-999` (and `-1` for the lithology)
@@ -82,6 +89,7 @@ julia -t 14 ~/opt/tapioca/src/postrunning/meshes2netcdf.jl ${PWD}       # in the
 julia -t 14 ~/opt/tapioca/src/postrunning/particles2netcdf.jl ${PWD} <reference_step>
 python ~/opt/post_processing/track_particles_nc_dk.py                   # in the folder of the scenario
 python ~/opt/post_processing/plot_PTT_frames_dk.py
+bash ~/opt/post_processing/pipeline.sh /path/to/scenario.zip 14             # zip -> .nc, snapshots and video
 cd ~/opt/post_processing/docs && make html                             # documentation in docs/build/html
 ```
 

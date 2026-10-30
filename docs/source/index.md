@@ -13,6 +13,7 @@ the crust (crustal thickness and width of the rifted margins).
 
 - [How to install](user_guide/install.md)
 - [Workflow](user_guide/workflow.md): from the outputs of Mandyoc to the figures.
+- [Pipeline](user_guide/pipeline.md): `pipeline.sh`, from the zip of a scenario to the snapshots and the video.
 - [Particle tracking](user_guide/tracking.md): `track_particles_nc_dk.py` and `track_particles_nc_rft.py`.
 - [Frames and videos](user_guide/frames.md): `plot_PTT_frames_dk.py`, `plot_PTT_frames_rft.py` and
   `frames_generator.py`.

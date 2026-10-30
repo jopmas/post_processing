@@ -17,8 +17,10 @@ not read. See [docs/source/references/data_format.md](docs/source/references/dat
 | `track_particles_nc_rft.py` | The same for rifting models. |
 | `plot_PTT_frames_dk.py` | Frames of the lithology with the temperature-coded P-T-t paths (double keel models). |
 | `plot_PTT_frames_rft.py` | Frames of the lithology with the depth-coded P-T-t paths (rifting models). |
-| `frames_generator.py` | Frames of the lithology, strain, isotherms and melt (accordion and rifting models). |
+| `frames_generator.py` | Frames and video of the lithology, strain, isotherms and melt (accordion, rifting and double keel models). |
 | `Geometries.ipynb` | Lithology (or other field) at chosen instants, crustal thickness and width of the margins. |
+| `plot_snapshots.py` | Snapshots of the scenario (beginning, middle and end) to see its general evolution. |
+| `pipeline.sh` | From the zip of a scenario: extraction, `.nc` files, cleaning, snapshots and video. |
 | `functions/mandyocIO.py` | Plotting functions used by the scripts (lithology legend, colorbars, P-T-t paths, `plot_property`). |
 
 ## How to install
@@ -52,10 +54,18 @@ Then clone this repository next to tapioca, e.g. in `~/opt/post_processing`. See
    python ~/opt/post_processing/plot_PTT_frames_dk.py
    ```
 
+Or run the whole post-processing of a zipped scenario (extraction, `.nc` files, cleaning of the extracted folders,
+snapshots and video) with the [pipeline](docs/source/user_guide/pipeline.md):
+
+```
+bash ~/opt/post_processing/pipeline.sh /path/to/scenario/scenario.zip 14
+```
+
 Each script has a block of settings at the top (region of the particles, layer codes, colors, which frames and
 videos to make). See the [user guide](docs/source/index.md):
 
 - [Workflow](docs/source/user_guide/workflow.md)
+- [Pipeline](docs/source/user_guide/pipeline.md)
 - [Particle tracking](docs/source/user_guide/tracking.md)
 - [Frames and videos](docs/source/user_guide/frames.md)
 - [Geometries notebook](docs/source/user_guide/geometries.md)

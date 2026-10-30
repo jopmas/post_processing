@@ -8,6 +8,7 @@ the Geometries notebook.
 
 install.md
 workflow.md
+pipeline.md
 tracking.md
 frames.md
 geometries.md

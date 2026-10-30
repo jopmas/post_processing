@@ -26,6 +26,7 @@ extensions = [
     "sphinx.ext.intersphinx", # Link objects and classes to external docs
     'sphinx.ext.mathjax',
     'sphinx_rtd_theme',
+    'sphinxcontrib.mermaid', # Draws the ```mermaid diagrams of the Markdown files
 ]
 
 # Parameters
@@ -43,6 +44,9 @@ intersphinx_mapping = {
 }
 
 myst_enable_extensions = ["dollarmath", "amsmath"]
+myst_fence_as_directive = ["mermaid"] # ```mermaid blocks are diagrams (sphinxcontrib.mermaid), as on GitHub
+mermaid_dark_theme = "default" # sphinx_rtd_theme is always light: use the light theme of mermaid also in dark mode
+mermaid_height = "auto"        # the whole diagram, instead of a box of 500px
 myst_heading_anchors = 3 # anchors for the headings, used by the links of the Markdown files
 
 source_suffix = {
