@@ -8,8 +8,7 @@ lithology, and measurements of the crust (crustal thickness and width of the rif
 
 The scripts read **only** the `.nc` files created by the Julia scripts of tapIOca
 (`src/postrunning/meshes2netcdf.jl` and `src/postrunning/particles2netcdf.jl`): `temperature.nc`, `strain.nc`,
-`lithology.nc`, `particles_trajectories.nc`, ... The old files (`_strain.nc`, `_output_strain.nc`, `_steps.nc`) are
-not read. See [docs/source/references/data_format.md](docs/source/references/data_format.md) for the structure of these files.
+`lithology.nc`, `particles_trajectories.nc`, ... See [docs/source/references/data_format.md](docs/source/references/data_format.md) for the structure of these files.  
 
 | Script | What it does |
 | --- | --- |
