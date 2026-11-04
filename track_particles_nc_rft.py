@@ -255,5 +255,7 @@ print(f"n_tracked x len(all_time) = {n_tracked}*{len(all_time)} = {n_tracked*len
 # Compressing the files
 print("Zipping files")
 #-m moves the files into the zip: each track*.txt is deleted only after it is in the zip
-subprocess.run(f"zip -m {model_name}.zip track*.txt", shell=True, check=True, capture_output=True, text=True)
+#The tracks have their own zip, so {model_name}.zip with the outputs of Mandyoc is not rewritten
+#Without capture_output, the error message of zip is shown in the terminal
+subprocess.run(f"zip -qm track_{model_name}.zip track*.txt", shell=True, check=True)
 print("Files zipped and track*.txt removed")

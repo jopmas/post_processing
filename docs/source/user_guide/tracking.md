@@ -8,7 +8,7 @@
 2. read the positions of these particles in every step from `particles_trajectories.nc`;
 3. interpolate (bilinear) the pressure and the temperature of `pressure.nc` and `temperature.nc` at the positions;
 4. write `_track_xzPT_all_steps.nc` (see [Data format](../references/data_format.md)), one text file per step
-   (`track_xzPT_step_<step>.txt`, zipped in `<model>.zip` and then removed) and, for double keel models,
+   (`track_xzPT_step_<step>.txt`, zipped in `track_<model>.zip` and then removed) and, for double keel models,
    `infos_track_<model>.txt`.
 
 Input files: `temperature.nc`, `pressure.nc` and `particles_trajectories.nc`, created with the final step of the

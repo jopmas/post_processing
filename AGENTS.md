@@ -64,7 +64,7 @@ Scripts and notebooks to post-process Mandyoc models from the NetCDF files creat
 - Legends and colorbars use `plot_lithology_legend` and `add_colorbar`: their size is fixed in inches (legend
   0.74 x 0.66 in, colorbar 1.8 x 0.11 in), only the position is relative to the axis.
 - With `pymp` (fork), read the HDF5/NetCDF data needed by the parallel part before it, or open the files inside it.
-- The tracking scripts zip `track_xzPT_step_*.txt` with `zip -m` (the files are removed after they are in the zip).
+- The tracking scripts zip `track_xzPT_step_*.txt` in `track_<model>.zip` with `zip -m` (the files are removed after they are in the zip).
 - `track_particles_nc_rft.py` sets `take_asthenosphere` and `instant_to_take` from the model name (`He`, `W1`/`S1`,
   ...). `frames_generator.py` has `oceanic_crust` (accordion AR models) and `plot_PTT_frames_dk.py` has
   `double_keel` to choose the layer codes.
