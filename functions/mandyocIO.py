@@ -2,6 +2,12 @@
 Functions to plot the outputs of Mandyoc converted to NetCDF by tapioca (meshes2netcdf.jl and particles2netcdf.jl),
 used by the scripts and notebooks of post_processing.
 """
+import fnmatch
+import glob
+import os
+import re
+import zipfile
+
 import numpy as np
 import xarray as xr
 from scipy.interpolate import interp1d
@@ -15,6 +21,7 @@ from matplotlib.ticker import FormatStrFormatter
 #Colors of the lithologies
 cr = 255.
 COLOR_AIR = (1., 1., 1.)
+COLOR_WATER = 'xkcd:light blue'
 COLOR_SED = (241./cr, 184./cr, 68./cr) #sediments
 COLOR_DEC = (137./cr, 81./cr, 151./cr) #decolement
 COLOR_BAS = 'xkcd:dark grey blue' #basaltic (oceanic) crust
@@ -33,10 +40,100 @@ LITHOLOGY_COLORS = {
     'rifting': [COLOR_AST, COLOR_LIT, COLOR_LIT, COLOR_LIT, COLOR_LC, COLOR_UC, COLOR_AIR],
     #asthenosphere, lithospheric mantle (3 layers), lower crust, upper crust, basaltic crust, air
     'accordion': [COLOR_AST, COLOR_LIT, COLOR_LIT, COLOR_LIT, COLOR_LC, COLOR_UC, COLOR_BAS, COLOR_AIR],
+    #asthenosphere, lower craton, upper craton, lithospheric mantle, seed, lower crust, upper crust, decolement, sediments, air
+    'svg_accordion': [COLOR_AST, COLOR_MLIT_LC, COLOR_MLIT_UC, COLOR_LIT, COLOR_LC, COLOR_LC, COLOR_UC, COLOR_DEC, COLOR_SED, COLOR_AIR],
 }
 
 #Model type of LITHOLOGY_COLORS from the number of layers (lithology codes), used by lithology_colors='auto'
-MODEL_FROM_NUMBER_OF_LAYERS = {11: 'double_keel', 7: 'rifting', 8: 'accordion'}
+#for scenarios without the names of the layers (infos_*.txt)
+MODEL_FROM_NUMBER_OF_LAYERS = {11: 'double_keel', 7: 'rifting', 8: 'accordion', 10: 'svg_accordion'}
+
+#Color of a layer from its name, used by lithology_colors='auto': the first keyword found in the name gives the color.
+#The other names (e.g. weak_seed, mobile_belt) get their color from the density, see _color_from_density.
+LAYER_NAME_COLORS = [('air', COLOR_AIR),
+                     ('water', COLOR_WATER),
+                     ('asthenosphere', COLOR_AST),
+                     ('lower_craton', COLOR_MLIT_LC),
+                     ('upper_craton', COLOR_MLIT_UC),
+                     ('lithospher', COLOR_LIT),
+                     ('oceanic_crust', COLOR_BAS),
+                     ('basalt', COLOR_BAS),
+                     ('lower_crust', COLOR_LC),
+                     ('upper_crust', COLOR_UC),
+                     ('decol', COLOR_DEC),
+                     ('sediment', COLOR_SED),
+                     ('basin', COLOR_SED)]
+
+def _color_from_density(rho):
+    '''Color of a layer from its density [kg/m3].'''
+    if(rho < 1200.0):
+        return COLOR_AIR
+    if(rho < 2750.0):
+        return COLOR_UC
+    if(rho < 2850.0):
+        return COLOR_LC
+    if(rho < 3000.0):
+        return COLOR_BAS
+    if(rho < 3350.0):
+        return COLOR_LIT
+    return COLOR_AST
+
+def _color_from_layer(name, rho):
+    '''Color of a layer from its name (LAYER_NAME_COLORS) or, for the other names, from its density.'''
+    for keyword, color in LAYER_NAME_COLORS:
+        if keyword in name.lower():
+            return color
+    return _color_from_density(rho)
+
+def _read_scenario_text(model_path, pattern):
+    '''Text of the first file of the scenario matching pattern, in its folder or in its inputs_*.zip. None if there is none.'''
+    for filename in sorted(glob.glob(os.path.join(glob.escape(model_path), pattern))):
+        with open(filename) as file:
+            return file.read()
+
+    for zip_filename in sorted(glob.glob(os.path.join(glob.escape(model_path), 'inputs_*.zip'))):
+        with zipfile.ZipFile(zip_filename) as zip_file:
+            for name in sorted(zip_file.namelist()):
+                if fnmatch.fnmatch(os.path.basename(name), pattern):
+                    return zip_file.read(name).decode()
+
+    return None
+
+def _read_layers_from_infos(model_path):
+    '''(name, density) of the layers (0 = bottom layer) from infos_*.txt, written by tapioca. Empty if there is no file.'''
+    text = _read_scenario_text(model_path, 'infos_*.txt')
+    if(text is None):
+        return []
+    lines = re.findall(r'^\s*\d+: (.+?) \(\S+\): .*rho = (\S+) kg/m3', text, flags=re.MULTILINE)
+    return [(name, float(rho)) for name, rho in lines]
+
+def _read_densities_from_interfaces(model_path):
+    '''Density of the layers (0 = bottom layer) from interfaces.txt. Empty if there is no file.'''
+    text = _read_scenario_text(model_path, 'interfaces.txt')
+    if(text is None):
+        return []
+    line = re.search(r'^rho\s+(.*)$', text, flags=re.MULTILINE)
+    return [float(rho) for rho in line.group(1).split()] if line else []
+
+def _auto_lithology_colors(model_path):
+    '''Colors of the layer codes from the names of the layers, the number of layers or the densities, in this order.'''
+    with xr.open_dataset(f"{model_path}/lithology.nc") as dataset:
+        number_of_layers = int(dataset.lithology.isel(time=0).max()) + 1
+
+    layers = _read_layers_from_infos(model_path)
+    if(len(layers) == number_of_layers):
+        return [_color_from_layer(name, rho) for name, rho in layers]
+
+    if(number_of_layers in MODEL_FROM_NUMBER_OF_LAYERS):
+        return LITHOLOGY_COLORS[MODEL_FROM_NUMBER_OF_LAYERS[number_of_layers]]
+
+    densities = _read_densities_from_interfaces(model_path)
+    if(len(densities) == number_of_layers):
+        return [_color_from_density(rho) for rho in densities]
+
+    raise ValueError(f"lithology_colors='auto': no infos_*.txt or interfaces.txt with {number_of_layers} layers in "
+                     f"{model_path} or in its inputs_*.zip. Choose one of {list(LITHOLOGY_COLORS)} or give a list "
+                     f"with {number_of_layers} colors.")
 
 def get_lithology_colors(model_path, lithology_colors='auto'):
     '''
@@ -48,9 +145,11 @@ def get_lithology_colors(model_path, lithology_colors='auto'):
         Path to the scenario directory (with lithology.nc, used by lithology_colors='auto').
 
     lithology_colors: str or list
-        A key of LITHOLOGY_COLORS ('double_keel', 'rifting', 'accordion'), a list with one color per code, or
-        'auto': the model type is chosen from the number of layers in lithology.nc (the air, top layer, has the
-        largest code), see MODEL_FROM_NUMBER_OF_LAYERS.
+        A key of LITHOLOGY_COLORS ('double_keel', 'rifting', 'accordion', 'svg_accordion'), a list with one color per
+        code, or 'auto': any number of layers, with the colors from, in this order, the names of the layers in
+        infos_*.txt (LAYER_NAME_COLORS, or the density for the other names), the number of layers in lithology.nc
+        (MODEL_FROM_NUMBER_OF_LAYERS) or the densities in interfaces.txt. infos_*.txt and interfaces.txt are read from
+        the scenario directory or from its inputs_*.zip.
 
     Returns
     -------
@@ -58,12 +157,7 @@ def get_lithology_colors(model_path, lithology_colors='auto'):
         One color per layer code.
     '''
     if(isinstance(lithology_colors, str) and lithology_colors == 'auto'):
-        with xr.open_dataset(f"{model_path}/lithology.nc") as dataset:
-            number_of_layers = int(dataset.lithology.isel(time=0).max()) + 1
-        if(number_of_layers not in MODEL_FROM_NUMBER_OF_LAYERS):
-            raise ValueError(f"lithology_colors='auto': no colors for models with {number_of_layers} layers. "
-                             f"Choose one of {list(LITHOLOGY_COLORS)} or give a list with {number_of_layers} colors.")
-        lithology_colors = MODEL_FROM_NUMBER_OF_LAYERS[number_of_layers]
+        return _auto_lithology_colors(model_path)
 
     if(isinstance(lithology_colors, str)):
         return LITHOLOGY_COLORS[lithology_colors]

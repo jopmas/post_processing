@@ -49,14 +49,15 @@ prop = 'lithology'
 # prop = 'viscosity'
 
 ##############################################################################################################
-#Colors of the Mandyoc layer codes in the lithology plot: 'auto' (model type from the number of layers in
-#lithology.nc: 11 double keel, 7 rifting, 8 accordion), a key of LITHOLOGY_COLORS (functions/mandyocIO.py)
+#Colors of the Mandyoc layer codes in the lithology plot: 'auto' (any number of layers, colors from the names of
+#the layers in infos_*.txt, see get_lithology_colors), a key of LITHOLOGY_COLORS (functions/mandyocIO.py)
 #or a list with one color per code (order of the layers in interfaces.txt, 0 = bottom layer, the air is the last one)
 
 lithology_colors = 'auto'
 # lithology_colors = 'double_keel'
 # lithology_colors = 'rifting'
 # lithology_colors = 'accordion'
+# lithology_colors = 'svg_accordion'
 
 ##############################################################################################################
 #Number of snapshots: equally spaced steps from the first to the last one

@@ -55,7 +55,7 @@ Input files: `strain.nc`, `lithology.nc`, `temperature.nc`, `density.nc` (and `P
 
 | Variable | Meaning |
 | --- | --- |
-| `lithology_colors` | `'auto'` (from the number of layers in `lithology.nc`: 11 double keel, 7 rifting, 8 accordion), `'double_keel'`, `'rifting'`, `'accordion'` or a list with one color per layer code. |
+| `lithology_colors` | `'auto'` (any number of layers, see `get_lithology_colors`), `'double_keel'`, `'rifting'`, `'accordion'`, `'svg_accordion'` or a list with one color per layer code. |
 | `plot_melt` | Melt and incremental melt. |
 | `fig_format` | Format of the frames (`jpeg`). |
 

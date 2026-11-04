@@ -211,10 +211,11 @@ color_ast = (207./cr,226./cr,205./cr) # 0
 
 #lithology.nc from tapioca has the Mandyoc layer codes (order of the layers in interfaces.txt, 0 = bottom layer).
 #Each code gets the color of its layer (LITHOLOGY_COLORS of functions/mandyocIO.py).
-lithology_colors = 'auto' #model type from the number of layers in lithology.nc: 11 double keel, 7 rifting, 8 accordion
+lithology_colors = 'auto' #any number of layers: colors from the names of the layers (infos_*.txt), see get_lithology_colors
 # lithology_colors = 'accordion' #models with a basaltic layer (rho = 2900 kg/m3) below the air (e.g. AR models)
 # lithology_colors = 'rifting' #rifting models (e.g. Ho35S1)
 # lithology_colors = 'double_keel'
+# lithology_colors = 'svg_accordion' #SVG accordion scenario of tapioca (10 layers)
 
 colors = get_lithology_colors(model_path, lithology_colors)
 

@@ -8,10 +8,11 @@ the scripts and the notebook.
 ## Colors of the lithology
 
 `LITHOLOGY_COLORS` has one color per Mandyoc layer code (order of the layers in `interfaces.txt`, 0 = bottom layer)
-of the double keel (`'double_keel'`), rifting (`'rifting'`) and accordion (`'accordion'`) models, made of the
+of the double keel (`'double_keel'`), rifting (`'rifting'`), accordion (`'accordion'`) and SVG accordion
+(`'svg_accordion'`) models, made of the
 colors `COLOR_AIR`, `COLOR_SED`, `COLOR_DEC`, `COLOR_BAS`, `COLOR_UC`, `COLOR_LC`, `COLOR_LIT`, `COLOR_MLIT_UC`,
-`COLOR_MLIT_LC` and `COLOR_AST`. `get_lithology_colors` returns them, or chooses the model type from the number of
-layers in `lithology.nc` (`'auto'`, see `MODEL_FROM_NUMBER_OF_LAYERS`).
+`COLOR_MLIT_LC` and `COLOR_AST`. `get_lithology_colors` returns them or, with `'auto'`, chooses the color of each layer
+from its name (`LAYER_NAME_COLORS`), for any number of layers.
 
 ```{eval-rst}
 .. currentmodule:: functions.mandyocIO

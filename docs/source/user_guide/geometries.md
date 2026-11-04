@@ -13,7 +13,7 @@ of Mandyoc). The functions it uses are in `functions/mandyocIO.py` (see the [ref
 | `scenario` | Path of the scenario, without `/Users/<user>` (added by `machine_path`). |
 | `prop` | Field to plot: `lithology` (default), `density`, `temperature`, `temperature_anomaly`, `pressure`, `strain`, `strain_rate`, `viscosity`, `radiogenic_heat` or `surface`. |
 | `crust_codes` | Mandyoc layer codes of the crust (order of the layers in `interfaces.txt`, 0 = bottom). |
-| `lithology_colors` | Colors of the layer codes in the lithology plot: `'double_keel'`, `'rifting'`, `'accordion'` or a list with one color per code. |
+| `lithology_colors` | Colors of the layer codes in the lithology plot: `'double_keel'`, `'rifting'`, `'accordion'`, `'svg_accordion'` or a list with one color per code. |
 | `instants` | Instants to plot [Myr]; the nearest steps are used. |
 | `plot_thickness` | Measure the crustal thickness and the width of the margins. |
 
@@ -24,6 +24,7 @@ of Mandyoc). The functions it uses are in `functions/mandyocIO.py` (see the [ref
 | double keel | `[4, 5, 6, 7, 8, 9]` (lower crust 1, seed, lower crust 2, upper crust, decolement, sediments) | `'double_keel'` |
 | rifting | `[4, 5]` (lower crust, upper crust) | `'rifting'` |
 | accordion (AR) | `[4, 5]`, or `[4, 5, 6]` with the basaltic crust | `'accordion'` |
+| SVG accordion | `[4, 5, 6, 7, 8]` (seed, lower crust, upper crust, decolement, sediments) | `'svg_accordion'` |
 
 The instants and the regions used to measure the thickness and the margins (`x_begin`, `x_end`, `xl_begin`,
 `xl_end`, `xr_begin`, `xr_end`) are set in the plotting loop and must be adapted to each model.

@@ -77,16 +77,17 @@ python ~/opt/post_processing/plot_snapshots.py
 | Variable | Meaning |
 | --- | --- |
 | `prop` | Field to plot (`lithology` by default). |
-| `lithology_colors` | `'auto'` (default), `'double_keel'`, `'rifting'`, `'accordion'` or a list with one color per layer code. |
+| `lithology_colors` | `'auto'` (default), `'double_keel'`, `'rifting'`, `'accordion'`, `'svg_accordion'` or a list with one color per layer code. |
 | `n_snapshots` | Number of panels (4 by default). |
 
 ## Colors of the lithology
 
-`plot_snapshots.py` and `frames_generator.py` use `lithology_colors = 'auto'`: the colors are chosen from the
-number of layers in `lithology.nc` (11: double keel, 7: rifting, 8: accordion, see `get_lithology_colors`). For
-another number of layers, set `lithology_colors` in both scripts (a key of `LITHOLOGY_COLORS` or a list of
-colors); otherwise the pipeline stops in step 5 with a message. The `.nc` files are already created then, so set
-`lithology_colors` and run only the last two steps, in the folder of the scenario:
+`plot_snapshots.py` and `frames_generator.py` use `lithology_colors = 'auto'`: each layer gets the color of its
+name in `infos_*.txt` (or in the `inputs_*.zip`), for any number of layers, see `get_lithology_colors`. Without
+`infos_*.txt`, the colors come from the number of layers (11: double keel, 7: rifting, 8: accordion, 10: SVG accordion)
+or from the densities in `interfaces.txt`. If none of them is available, set `lithology_colors` in both scripts (a key
+of `LITHOLOGY_COLORS` or a list of colors); otherwise the pipeline stops in step 5 with a message. The `.nc` files are
+already created then, so set `lithology_colors` and run only the last two steps, in the folder of the scenario:
 
 ```
 python ~/opt/post_processing/plot_snapshots.py

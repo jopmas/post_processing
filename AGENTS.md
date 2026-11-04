@@ -42,10 +42,11 @@ Scripts and notebooks to post-process Mandyoc models from the NetCDF files creat
 - `lithology.nc` has the Mandyoc layer codes (order of the layers in `interfaces.txt`, 0 = bottom layer) on a mesh
   5 times finer: `Nxl = 5*(Nx-1)+1`, `Nzl = 5*(Nz-1)+1`, and `lithology[:, ::5]` is on the mesh x. The lithology is
   plotted from `lithology.nc`, never from the density. `plot_property` and the notebook use `LITHOLOGY_COLORS` of
-  `functions/mandyocIO.py` (`get_lithology_colors`, `'auto'` chooses the model type from the number of layers);
+  `functions/mandyocIO.py` (`get_lithology_colors`, `'auto'` handles any number of layers: colors from the names of the layers in `infos_*.txt`, from the
+  number of layers or from the densities in `interfaces.txt`);
   `plot_PTT_frames_dk.py` and `plot_PTT_frames_rft.py` build a `lithology_colors` dict from their layer code variables. Plot with
   `ListedColormap(colors)`, `vmin=-0.5`, `vmax=len(colors)-0.5`. The codes depend on the model type
-  (double keel: 11 layers; rifting: 7; accordion AR: 8, with a basaltic layer of 2900 kg/m3).
+  (double keel: 11 layers; rifting: 7; accordion AR: 8, with a basaltic layer of 2900 kg/m3; SVG accordion of tapioca: 10).
 - `particles_trajectories.nc`: `x`, `z`, `lithology` with dims `(time, id)`, `-999` (and `-1` for the lithology)
   where the particle does not exist in a step. It only has the particles that exist in its reference step
   (attribute `reference_timestep`): the tracking scripts select particles in the final step, so the file should be

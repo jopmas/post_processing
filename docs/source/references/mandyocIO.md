@@ -14,11 +14,19 @@ layer code (order of the layers in `interfaces.txt`, 0 = bottom layer) of each m
 | `'double_keel'` | asthenosphere, lower craton, upper craton, lithospheric mantle, lower crust 1, seed, lower crust 2, upper crust, decolement, sediments, air |
 | `'rifting'` | asthenosphere, lithospheric mantle, seed, lithospheric mantle, lower crust, upper crust, air |
 | `'accordion'` | asthenosphere, lithospheric mantle (3 layers), lower crust, upper crust, basaltic crust, air |
+| `'svg_accordion'` | asthenosphere, lower craton, upper craton, lithospheric mantle, seed, lower crust, upper crust, decolement, sediments, air |
 
 `get_lithology_colors(model_path, lithology_colors='auto')` returns the colors of a key, of a list, or, with
-`'auto'`, of the model type chosen from the number of layers in `lithology.nc` (11: `'double_keel'`, 7:
-`'rifting'`, 8: `'accordion'`, `MODEL_FROM_NUMBER_OF_LAYERS`). `plot_property`, `plot_snapshots.py` and
-`frames_generator.py` use it.
+`'auto'`, for any number of layers, of the first of these sources that fits the number of layers in `lithology.nc`:
+
+1. The names of the layers in `infos_*.txt`, written by tapioca (`LAYER_NAME_COLORS`). The other names, such as
+   `weak_seed` and `mobile_belt`, get their color from the density of the layer.
+2. The number of layers (11: `'double_keel'`, 7: `'rifting'`, 8: `'accordion'`, 10: `'svg_accordion'`,
+   `MODEL_FROM_NUMBER_OF_LAYERS`).
+3. The densities in `interfaces.txt`.
+
+`infos_*.txt` and `interfaces.txt` are read from the folder of the scenario or from its `inputs_*.zip`. Without any of
+them it stops with a message. `plot_property`, `plot_snapshots.py` and `frames_generator.py` use it.
 
 ## Reading the tapioca files
 
