@@ -8,9 +8,12 @@ import io
 import os
 import re
 import zipfile
+from xml.etree import ElementTree
 
 import numpy as np
 import xarray as xr
+from matplotlib.colors import is_color_like
+from scipy.ndimage import binary_dilation
 from scipy.interpolate import interp1d
 
 import matplotlib.pyplot as plt
@@ -87,18 +90,24 @@ def _color_from_layer(name, rho):
     return _color_from_density(rho)
 
 def _read_scenario_text(model_path, pattern):
-    '''Text of the first file of the scenario matching pattern, in its folder or in its inputs_*.zip. None if there is none.'''
+    '''Text of the first file of the scenario matching pattern, in its folder, in its inputs_*.zip or in <model>.zip. None if there is none.'''
     for filename in sorted(glob.glob(os.path.join(glob.escape(model_path), pattern))):
         if(os.path.basename(filename).startswith('infos_track_')): #written by track_particles_nc_*.py, without the layers
             continue
         with open(filename) as file:
             return file.read()
 
-    for zip_filename in sorted(glob.glob(os.path.join(glob.escape(model_path), 'inputs_*.zip'))):
-        with zipfile.ZipFile(zip_filename) as zip_file:
-            for name in sorted(zip_file.namelist()):
-                if fnmatch.fnmatch(os.path.basename(name), pattern):
-                    return zip_file.read(name).decode()
+    model_name = os.path.basename(os.path.normpath(os.path.abspath(model_path)))
+    zip_filenames = sorted(glob.glob(os.path.join(glob.escape(model_path), 'inputs_*.zip')))
+    zip_filenames += glob.glob(os.path.join(glob.escape(model_path), f'{glob.escape(model_name)}.zip'))
+    for zip_filename in zip_filenames:
+        try:
+            with zipfile.ZipFile(zip_filename) as zip_file:
+                for name in sorted(zip_file.namelist()):
+                    if fnmatch.fnmatch(os.path.basename(name), pattern) and not os.path.basename(name).startswith('infos_track_'):
+                        return zip_file.read(name).decode()
+        except zipfile.BadZipFile: #e.g. a zip that is still being downloaded
+            print(f"WARNING: {zip_filename} is not a complete zip file and was ignored.")
 
     return None
 
@@ -213,6 +222,22 @@ def get_velocity(model_path):
 
     return _velocity_from_input_velocity(model_path)
 
+def _read_colors_from_svg(model_path):
+    '''{name of the layer: fill color} of the shapes of the SVG of the scenario (inkscape:label, or the id). Empty if there is no SVG.'''
+    text = _read_scenario_text(model_path, '*.svg')
+    if(text is None):
+        return {}
+
+    colors = {}
+    for element in ElementTree.fromstring(text).iter():
+        match = re.search(r'(?:^|;)\s*fill:\s*([^;]+)', element.get('style', ''))
+        fill = match.group(1).strip() if match else element.get('fill')
+        name = element.get('{http://www.inkscape.org/namespaces/inkscape}label') or element.get('id')
+        if(name is not None and fill is not None and is_color_like(fill)):
+            colors.setdefault(name, fill)
+
+    return colors
+
 def _read_densities_from_interfaces(model_path):
     '''Density of the layers (0 = bottom layer) from interfaces.txt. Empty if there is no file.'''
     text = _read_scenario_text(model_path, 'interfaces.txt')
@@ -221,14 +246,54 @@ def _read_densities_from_interfaces(model_path):
     line = re.search(r'^rho\s+(.*)$', text, flags=re.MULTILINE)
     return [float(rho) for rho in line.group(1).split()] if line else []
 
+def _colors_from_density_mesh(model_path, number_of_layers):
+    '''
+    Approximate colors of the layer codes from lithology.nc and density.nc at the first step of density.nc, for scenarios without the
+    input files. The density of a layer is its most frequent value out of the air, because the cells at the contacts
+    between the layers are mixed. Layers with the same density get the same color and a layer not seen in the mesh of
+    density.nc gets the upper crust color. The top layer is the air. Empty if there is no density.nc.
+    '''
+    if(not os.path.isfile(f"{model_path}/density.nc")):
+        return []
+
+    with xr.open_dataset(f"{model_path}/lithology.nc") as lithology_dataset, xr.open_dataset(f"{model_path}/density.nc") as density_dataset:
+        density = density_dataset.density.isel(time=0)
+        first_step = np.argmin(np.abs(lithology_dataset.step.values - density_dataset.step.values[0])) #the files can start at different steps
+        lithology = lithology_dataset.lithology.isel(time=first_step).sel(x=density.x, z=density.z, method='nearest').values
+        density = np.round(density.values)
+
+    colors = []
+    for code in range(number_of_layers-1):
+        values, counts = np.unique(density[(lithology == code) & (density >= 1200.0)], return_counts=True) #without the cells with air
+        colors.append(_color_from_density(values[np.argmax(counts)]) if values.size > 0 else COLOR_UC)
+
+    return colors + [COLOR_AIR]
+
+def _code_around_layer(lithology, code, air_code, thickness=3):
+    '''Code of the layer that most surrounds the layer code (cells up to thickness cells away, without the air). None if there is none.'''
+    layer = lithology == code
+    around = binary_dilation(layer, iterations=thickness) & ~layer & (lithology != air_code)
+    if(not np.any(around)):
+        return None
+    values, counts = np.unique(lithology[around], return_counts=True)
+    return int(values[np.argmax(counts)])
+
 def _auto_lithology_colors(model_path):
-    '''Colors of the layer codes from the names of the layers, the number of layers or the densities, in this order.'''
+    '''Colors of the layer codes from the names of the layers (colors of the SVG or LAYER_NAME_COLORS), the number of layers, the densities in interfaces.txt or in density.nc, in this order.'''
     with xr.open_dataset(f"{model_path}/lithology.nc") as dataset:
-        number_of_layers = int(dataset.lithology.isel(time=0).max()) + 1
+        lithology = dataset.lithology.isel(time=0).values
+    number_of_layers = int(lithology.max()) + 1
 
     layers = _read_layers_from_infos(model_path)
     if(len(layers) == number_of_layers):
-        return [_color_from_layer(name, rho) for name, rho in layers]
+        svg_colors = _read_colors_from_svg(model_path)
+        colors = [svg_colors.get(name, _color_from_layer(name, rho)) for name, rho in layers]
+        #The weak seed gets the color of the layer around it
+        for code, (name, rho) in enumerate(layers):
+            if('seed' in name.lower()):
+                code_around = _code_around_layer(lithology, code, number_of_layers-1)
+                colors[code] = colors[code_around] if code_around is not None else _color_from_layer(name, rho)
+        return colors
 
     if(number_of_layers in MODEL_FROM_NUMBER_OF_LAYERS):
         return LITHOLOGY_COLORS[MODEL_FROM_NUMBER_OF_LAYERS[number_of_layers]]
@@ -237,9 +302,16 @@ def _auto_lithology_colors(model_path):
     if(len(densities) == number_of_layers):
         return [_color_from_density(rho) for rho in densities]
 
-    raise ValueError(f"lithology_colors='auto': no infos_*.txt or interfaces.txt with {number_of_layers} layers in "
-                     f"{model_path} or in its inputs_*.zip. Choose one of {list(LITHOLOGY_COLORS)} or give a list "
-                     f"with {number_of_layers} colors.")
+    colors = _colors_from_density_mesh(model_path, number_of_layers)
+    if(len(colors) == number_of_layers):
+        print(f"WARNING: no infos_*.txt or interfaces.txt with {number_of_layers} layers in {model_path} or in its "
+              f"inputs_*.zip or <model>.zip. Approximate colors from density.nc: layers with similar densities get the same "
+              f"color. Copy infos_*.txt and the SVG to the scenario directory for the exact colors.")
+        return colors
+
+    raise ValueError(f"lithology_colors='auto': no infos_*.txt, interfaces.txt or density.nc with {number_of_layers} "
+                     f"layers in {model_path} or in its inputs_*.zip. Choose one of {list(LITHOLOGY_COLORS)} or give a "
+                     f"list with {number_of_layers} colors.")
 
 def get_lithology_colors(model_path, lithology_colors='auto'):
     '''
@@ -253,9 +325,10 @@ def get_lithology_colors(model_path, lithology_colors='auto'):
     lithology_colors: str or list
         A key of LITHOLOGY_COLORS ('double_keel', 'rifting', 'accordion', 'svg_accordion'), a list with one color per
         code, or 'auto': any number of layers, with the colors from, in this order, the names of the layers in
-        infos_*.txt (LAYER_NAME_COLORS, or the density for the other names), the number of layers in lithology.nc
-        (MODEL_FROM_NUMBER_OF_LAYERS) or the densities in interfaces.txt. infos_*.txt and interfaces.txt are read from
-        the scenario directory or from its inputs_*.zip.
+        infos_*.txt (with the colors of the shapes with these names in the SVG of the scenario or, without them,
+        LAYER_NAME_COLORS, or the density for the other names; a weak seed gets the color of the layer around it), the number of layers in lithology.nc
+        (MODEL_FROM_NUMBER_OF_LAYERS), the densities in interfaces.txt or, approximately, the densities in density.nc.
+        infos_*.txt, the SVG and interfaces.txt are read from the scenario directory, its inputs_*.zip or <model>.zip.
 
     Returns
     -------
