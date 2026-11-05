@@ -29,7 +29,7 @@ sys.path.append(os.path.abspath(path_to_functions))
 
 if '' in sys.path:
     sys.path.remove('')
-from functions.mandyocIO import change_dataset, plot_property, plot_lithology_legend, plot_tracked_particles, plot_ptt_paths_three_particles, plot_tracked_particles_depth_coded, plot_ptt_paths_depth_coded_frame, find_nearest, _extract_interface
+from functions.mandyocIO import change_dataset, plot_property, plot_lithology_legend, plot_tracked_particles, plot_ptt_paths_three_particles, plot_tracked_particles_depth_coded, plot_ptt_paths_depth_coded_frame, find_nearest, _extract_interface, get_lithology_colors, get_layer_codes
 
 ####################################################################################################################################
 model_path = os.getcwd() # Get local file
@@ -211,6 +211,18 @@ lower_crust_code = 4 #lower crust
 upper_crust_code = 5 #upper crust
 air_code = 6 #air
 
+#Codes from the names of the layers in infos_*.txt (tapioca), when the model has it
+layer_codes = get_layer_codes(model_path)
+if(layer_codes is not None):
+    asthenosphere_code = layer_codes['asthenosphere']
+    mantle_lithosphere1_code = layer_codes['mantle_lithosphere1']
+    seed_code = layer_codes['seed']
+    mantle_lithosphere2_code = layer_codes['mantle_lithosphere2']
+    lower_crust_code = layer_codes['lower_crust']
+    upper_crust_code = layer_codes['upper_crust']
+    air_code = layer_codes['air']
+    print(f"Layer codes from infos_*.txt: {layer_codes}")
+
 T_initial = T[0] #initial temperature of particles
 P_initial = P[0] #initial pressure of particles 
 
@@ -314,16 +326,11 @@ color_ast = (207./cr,226./cr,205./cr) # 0
 
 
 #lithology.nc from tapioca has the Mandyoc layer codes (order of the layers in interfaces.txt, 0 = bottom layer).
-#Each code gets the color of its layer.
-lithology_colors = {asthenosphere_code: color_ast,
-                    mantle_lithosphere1_code: color_lit,
-                    seed_code: color_lit,
-                    mantle_lithosphere2_code: color_lit,
-                    lower_crust_code: color_lc,
-                    upper_crust_code: color_uc,
-                    air_code: color_air}
+#Each code gets the color of its layer, see get_lithology_colors (functions/mandyocIO.py).
+lithology_colors = 'auto' #any number of layers: colors from the names of the layers (infos_*.txt), see get_lithology_colors
+# lithology_colors = 'rifting'
 
-colors = [lithology_colors[code] for code in range(air_code+1)]
+colors = get_lithology_colors(model_path, lithology_colors)
 
 #Creating a custom colormap according to the list of colors defined above.
 # This colormap will be used to plot the lithology mesh, where each lithology code is represented by a specific color.
@@ -393,8 +400,8 @@ with pymp.Parallel() as p:
                 linewidth = 0.85
                 markersize = 8
                 plot_other_particles = True
-                plot_tracked_particles(trackdataset, axs[0,0], i, plot_other_particles=plot_other_particles, color_other_particles='xkcd:black', size_other_particles=3)
-                plot_ptt_paths_three_particles(trackdataset, axs[0,1], i, current_time, plot_other_particles=plot_other_particles, color_other_particles='xkcd:black')
+                plot_tracked_particles(trackdataset, axs[0,0], i, plot_other_particles=plot_other_particles, color_other_particles='xkcd:black', size_other_particles=3, layer_codes=layer_codes)
+                plot_ptt_paths_three_particles(trackdataset, axs[0,1], i, current_time, plot_other_particles=plot_other_particles, color_other_particles='xkcd:black', layer_codes=layer_codes)
             if(plot_depth_coded):
                 # color_lower_crust = 'xkcd:brown'
                 color_mlit_upper='xkcd:bright purple'#'xkcd:cerulean blue'
@@ -406,12 +413,12 @@ with pymp.Parallel() as p:
 
                 plot_tracked_particles_depth_coded(trackdataset, axs[0,0], i, hcrust=hcrust, markersize=4,
                                                    plot_lower_crust_particles=False, plot_mantle_lithosphere_particles=True, plot_asthenosphere_particles=True,
-                                                   color_mlit_upper=color_mlit_upper, color_mlit_intermediate=color_mlit_intermediate, color_mlit_lower=color_mlit_lower)
+                                                   color_mlit_upper=color_mlit_upper, color_mlit_intermediate=color_mlit_intermediate, color_mlit_lower=color_mlit_lower, layer_codes=layer_codes)
                 plot_ptt_paths_depth_coded_frame(trackdataset, axs[0,1], i, current_time, hcrust=hcrust, alpha_lines=0.3, markersize=markersize, linewidth=linewidth,
                                                  plot_lower_crust_particles=False, plot_mantle_lithosphere_particles=True, plot_asthenosphere_particles=True,
                                                  color_mlit_upper=color_mlit_upper, color_mlit_intermediate=color_mlit_intermediate, color_mlit_lower=color_mlit_lower,
                                                  plot_steps=False,
-                                                 alpha=0.5)
+                                                 alpha=0.5, layer_codes=layer_codes)
 
             # Setting plot details
             fsize = 14

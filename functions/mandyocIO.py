@@ -4,6 +4,7 @@ used by the scripts and notebooks of post_processing.
 """
 import fnmatch
 import glob
+import io
 import os
 import re
 import zipfile
@@ -88,6 +89,8 @@ def _color_from_layer(name, rho):
 def _read_scenario_text(model_path, pattern):
     '''Text of the first file of the scenario matching pattern, in its folder or in its inputs_*.zip. None if there is none.'''
     for filename in sorted(glob.glob(os.path.join(glob.escape(model_path), pattern))):
+        if(os.path.basename(filename).startswith('infos_track_')): #written by track_particles_nc_*.py, without the layers
+            continue
         with open(filename) as file:
             return file.read()
 
@@ -106,6 +109,109 @@ def _read_layers_from_infos(model_path):
         return []
     lines = re.findall(r'^\s*\d+: (.+?) \(\S+\): .*rho = (\S+) kg/m3', text, flags=re.MULTILINE)
     return [(name, float(rho)) for name, rho in lines]
+
+def get_layer_codes(model_path):
+    '''
+    Mandyoc layer codes of the layers (variables *_code of plot_PTT_frames_dk.py and plot_PTT_frames_rft.py) from the
+    names of the layers in infos_*.txt.
+
+    Parameters
+    ----------
+    model_path: str
+        Path to the scenario directory.
+
+    Returns
+    -------
+    codes: dict or None
+        {'asthenosphere': code, 'lower_craton': code, ..., 'air': code}. A layer that is not in the model has code -1
+        (no particle has it). lower_crust1 and lower_crust2 (mantle_lithosphere1 and mantle_lithosphere2) are the bottom
+        and top lower crust (lithospheric mantle) layers, the same code if there is only one. None if there is no
+        infos_*.txt.
+    '''
+    layers = _read_layers_from_infos(model_path)
+    if(len(layers) == 0):
+        return None
+
+    names = [name for name, rho in layers]
+    def codes_of(name):
+        return [code for code, layer_name in enumerate(names) if layer_name == name] or [-1]
+
+    return {'asthenosphere': codes_of('asthenosphere')[0],
+            'lower_craton': codes_of('lower_cratonic_lithospheric_mantle')[0],
+            'upper_craton': codes_of('upper_cratonic_lithospheric_mantle')[0],
+            'mantle_lithosphere': codes_of('lithospheric_mantle')[0],
+            'mantle_lithosphere1': codes_of('lithospheric_mantle')[0],
+            'mantle_lithosphere2': codes_of('lithospheric_mantle')[-1],
+            'seed': codes_of('weak_seed')[0],
+            'lower_crust': codes_of('lower_crust')[0],
+            'lower_crust1': codes_of('lower_crust')[0],
+            'lower_crust2': codes_of('lower_crust')[-1],
+            'upper_crust': codes_of('upper_crust')[0],
+            'decolement': codes_of('decolement')[0],
+            'sediments': codes_of('sediments')[0],
+            'air': len(names) - 1} #the air is the top layer
+
+def _rifting_layer_codes(layer_codes=None):
+    '''
+    Codes (asthenosphere, mantle lithosphere 1, seed, mantle lithosphere 2, lower crust, upper crust) used by the
+    functions that plot the tracked particles of rifting models: from layer_codes (see get_layer_codes) or, if it is
+    None, the codes of the rifting models with 7 layers.
+    '''
+    if(layer_codes is None):
+        return 0, 1, 2, 3, 4, 5
+    return (layer_codes['asthenosphere'], layer_codes['mantle_lithosphere1'], layer_codes['seed'],
+            layer_codes['mantle_lithosphere2'], layer_codes['lower_crust'], layer_codes['upper_crust'])
+
+def _velocity_from_input_velocity(model_path):
+    '''
+    Rate of the imposed velocity [cm/yr] from input_velocity_0.txt of Mandyoc (vx, vz of each node, x varying first, from
+    the bottom) and nx, nz of param.txt. None if there are no files. The imposed velocity is the constant vx of each side
+    (the most frequent nonzero value, the rest is the return flow; 0 if no value repeats), and the rate is the sum of the
+    left and right sides (e.g. symmetric 0.5 + 0.5 cm/yr = 1 cm/yr).
+    '''
+    velocity_text = _read_scenario_text(model_path, 'input_velocity_0.txt')
+    param_text = _read_scenario_text(model_path, 'param.txt')
+    if(velocity_text is None or param_text is None):
+        return None
+
+    nx = int(re.search(r'^\s*nx\s*=\s*(\d+)', param_text, flags=re.MULTILINE).group(1))
+    nz = int(re.search(r'^\s*nz\s*=\s*(\d+)', param_text, flags=re.MULTILINE).group(1))
+    seconds_per_year = 365.25 * 24.0 * 3600.0
+    vx = np.loadtxt(io.StringIO(velocity_text), comments='#')[0::2].reshape(nz, nx) * seconds_per_year * 100.0 #cm/yr
+
+    def imposed(side):
+        side = np.round(side, 6)
+        side = side[side != 0.0]
+        if(side.size == 0):
+            return 0.0
+        values, counts = np.unique(np.abs(side), return_counts=True)
+        return values[np.argmax(counts)] if counts.max() > 1 else 0.0
+
+    return float(imposed(vx[:, 0]) + imposed(vx[:, -1]))
+
+def get_velocity(model_path):
+    '''
+    Rate of the imposed (initial) velocity of the model.
+
+    Parameters
+    ----------
+    model_path: str
+        Path to the scenario directory.
+
+    Returns
+    -------
+    v: float or None
+        Velocity [cm/yr] from "initial velocity" in infos_*.txt or, without it, from input_velocity_0.txt
+        (see _velocity_from_input_velocity). None if the model has none of them. Files are read from the scenario
+        directory or from its inputs_*.zip.
+    '''
+    text = _read_scenario_text(model_path, 'infos_*.txt')
+    if(text is not None):
+        match = re.search(r'initial velocity: (\S+) cm/yr', text)
+        if(match):
+            return float(match.group(1))
+
+    return _velocity_from_input_velocity(model_path)
 
 def _read_densities_from_interfaces(model_path):
     '''Density of the layers (0 = bottom layer) from interfaces.txt. Empty if there is no file.'''
@@ -672,7 +778,7 @@ def change_dataset(properties, datasets):
     return new_datasets
 
 
-def plot_tracked_particles(trackdataset, ax, i, plot_other_particles=False, color_other_particles='xkcd:black', size_other_particles=5):
+def plot_tracked_particles(trackdataset, ax, i, plot_other_particles=False, color_other_particles='xkcd:black', size_other_particles=5, layer_codes=None):
     """
     Plot tracked particles in the subplot ax
 
@@ -684,6 +790,8 @@ def plot_tracked_particles(trackdataset, ax, i, plot_other_particles=False, colo
         Subplot to plot the tracked particles
     i : int
         Current time step
+    layer_codes : dict
+        Codes of the layers (see get_layer_codes). If None, the codes of the rifting models with 7 layers
     """
     x_track = trackdataset.xtrack.values[::-1]
     z_track = trackdataset.ztrack.values[::-1]
@@ -701,12 +809,7 @@ def plot_tracked_particles(trackdataset, ax, i, plot_other_particles=False, colo
     T = np.reshape(T,(steps,n))
     particles_layers = trackdataset.particles_layers.values[::-1] #code of the tracked layers
 
-    asthenosphere_code = 0
-    mantle_lithosphere1_code = 1
-    seed_code = 2
-    mantle_lithosphere2_code = 3
-    lower_crust_code = 4
-    upper_crust_code = 5
+    asthenosphere_code, mantle_lithosphere1_code, seed_code, mantle_lithosphere2_code, lower_crust_code, upper_crust_code = _rifting_layer_codes(layer_codes)
 
     T_initial = T[0]
     P_initial = P[0]
@@ -799,7 +902,7 @@ def plot_tracked_particles(trackdataset, ax, i, plot_other_particles=False, colo
 def plot_tracked_particles_depth_coded(trackdataset, ax, i, hcrust=35.0e3, markersize=4,
                                        plot_lower_crust_particles=False, plot_mantle_lithosphere_particles=True, plot_asthenosphere_particles=True,
                                        color_lower_crust='xkcd:brown',
-                                       color_mlit_upper='xkcd:cerulean blue', color_mlit_intermediate='xkcd:scarlet', color_mlit_lower='xkcd:dark green', particles_alpha=0.7):
+                                       color_mlit_upper='xkcd:cerulean blue', color_mlit_intermediate='xkcd:scarlet', color_mlit_lower='xkcd:dark green', particles_alpha=0.7, layer_codes=None):
     """
     Plot tracked particles in the subplot ax
 
@@ -831,6 +934,8 @@ def plot_tracked_particles_depth_coded(trackdataset, ax, i, hcrust=35.0e3, marke
         Color of the lower mantle lithosphere particles
     particles_alpha : float
         Alpha transparency of the particles
+    layer_codes : dict
+        Codes of the layers (see get_layer_codes). If None, the codes of the rifting models with 7 layers
     """
     x_track = trackdataset.xtrack.values[::-1]
     z_track = trackdataset.ztrack.values[::-1] #the values of z are negative, so we need to multiply by -1 to plot them in the correct position
@@ -848,12 +953,7 @@ def plot_tracked_particles_depth_coded(trackdataset, ax, i, hcrust=35.0e3, marke
     T = np.reshape(T,(steps,n))
     particles_layers = trackdataset.particles_layers.values[::-1] #code of the tracked layers
 
-    asthenosphere_code = 0
-    mantle_lithosphere1_code = 1
-    seed_code = 2
-    mantle_lithosphere2_code = 3
-    lower_crust_code = 4
-    upper_crust_code = 5
+    asthenosphere_code, mantle_lithosphere1_code, seed_code, mantle_lithosphere2_code, lower_crust_code, upper_crust_code = _rifting_layer_codes(layer_codes)
 
     T_initial = T[0]
     P_initial = P[0]
@@ -959,7 +1059,7 @@ def plot_ptt_paths_depth_coded_frame(trackdataset, ax, i, current_time, hcrust=3
                                      color_lower_crust='xkcd:brown',
                                      color_mlit_upper='xkcd:cerulean blue', color_mlit_intermediate='xkcd:scarlet', color_mlit_lower='xkcd:dark green',
                                      plot_steps=False,
-                                     alpha=0.7):
+                                     alpha=0.7, layer_codes=None):
     """
     Plot PTt path of tracked particles in the subplot ax
 
@@ -995,6 +1095,8 @@ def plot_ptt_paths_depth_coded_frame(trackdataset, ax, i, current_time, hcrust=3
         Size of the markers to plot
     alpha : float
         Transparency of the lines to plot
+    layer_codes : dict
+        Codes of the layers (see get_layer_codes). If None, the codes of the rifting models with 7 layers
     """
     x_track = trackdataset.xtrack.values[::-1]
     z_track = trackdataset.ztrack.values[::-1]
@@ -1032,12 +1134,7 @@ def plot_ptt_paths_depth_coded_frame(trackdataset, ax, i, current_time, hcrust=3
     zb_intermediate = zb_upper - thickness_intermediate #m. The values of z_initial are negative, so we need to subtract
     zb_lower = -1.0 * (h_lithosphere + h_air) #m z depth of the bottom of the lithosphere considering air layer
 
-    asthenosphere_code = 0
-    mantle_lithosphere1_code = 1
-    seed_code = 2
-    mantle_lithosphere2_code = 3
-    lower_crust_code = 4
-    upper_crust_code = 5
+    asthenosphere_code, mantle_lithosphere1_code, seed_code, mantle_lithosphere2_code, lower_crust_code, upper_crust_code = _rifting_layer_codes(layer_codes)
     T_initial = T[0]
     P_initial = P[0]
 
@@ -1155,7 +1252,7 @@ def plot_ptt_paths_depth_coded_frame(trackdataset, ax, i, current_time, hcrust=3
                         ax.plot(T[idx, particle], P[idx, particle]/1.0e3, '.', color='xkcd:black', markersize=2, zorder=60)
 
 
-def plot_ptt_paths_three_particles(trackdataset, ax, i, current_time, plot_other_particles=True, color_other_particles='xkcd:black', size_other_particles=0.7):
+def plot_ptt_paths_three_particles(trackdataset, ax, i, current_time, plot_other_particles=True, color_other_particles='xkcd:black', size_other_particles=0.7, layer_codes=None):
     """
     Plot PTt path of tracked particles in the subplot ax
 
@@ -1167,6 +1264,8 @@ def plot_ptt_paths_three_particles(trackdataset, ax, i, current_time, plot_other
         Subplot to plot the PTt path
     instants : list
         List of instants to plot the PTt path
+    layer_codes : dict
+        Codes of the layers (see get_layer_codes). If None, the codes of the rifting models with 7 layers
     """
     x_track = trackdataset.xtrack.values[::-1]
     z_track = trackdataset.ztrack.values[::-1]
@@ -1184,12 +1283,7 @@ def plot_ptt_paths_three_particles(trackdataset, ax, i, current_time, plot_other
     T = np.reshape(T,(steps,n))
     particles_layers = trackdataset.particles_layers.values[::-1] #code of the tracked layers
 
-    asthenosphere_code = 0
-    mantle_lithosphere1_code = 1
-    seed_code = 2
-    mantle_lithosphere2_code = 3
-    lower_crust_code = 4
-    upper_crust_code = 5
+    asthenosphere_code, mantle_lithosphere1_code, seed_code, mantle_lithosphere2_code, lower_crust_code, upper_crust_code = _rifting_layer_codes(layer_codes)
     T_initial = T[0]
     P_initial = P[0]
 

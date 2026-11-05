@@ -18,11 +18,15 @@
 
 import numpy as np
 import os
+import sys
 import xarray as xr
 import subprocess
 import multiprocessing #needed to run pymp in mac
 multiprocessing.set_start_method('fork') #needed to run pymp in mac
 import pymp
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__))) # post_processing folder, with functions/mandyocIO.py
+from functions.mandyocIO import get_layer_codes
 
 model_path = os.getcwd()
 
@@ -155,6 +159,23 @@ else:
     sediments_code = 7
     air_code = 8
 
+#Codes from the names of the layers in infos_*.txt (tapioca), when the model has it
+layer_codes = get_layer_codes(model_path)
+if(layer_codes is not None):
+    double_keel = layer_codes['lower_craton'] >= 0
+    asthenosphere_code = layer_codes['asthenosphere']
+    lower_craton_code = layer_codes['lower_craton']
+    upper_craton_code = layer_codes['upper_craton']
+    mantle_lithosphere_code = layer_codes['mantle_lithosphere']
+    lower_crust1_code = layer_codes['lower_crust1']
+    seed_code = layer_codes['seed']
+    lower_crust2_code = layer_codes['lower_crust2']
+    upper_crust_code = layer_codes['upper_crust']
+    decolement_code = layer_codes['decolement']
+    sediments_code = layer_codes['sediments']
+    air_code = layer_codes['air']
+    print(f"Layer codes from infos_*.txt: {layer_codes}")
+
 
 if(take_asthenosphere):
     cond = (z>-(h_air + search_thickness)) & (x>=x_begin) & (x<=x_end) & (layer_vec<air_code) & (layer_vec>=asthenosphere_code) #to take particles from asthenosphere and lithosphere.
@@ -174,7 +195,7 @@ if(double_keel):
     n_tracked_upper_craton = layers_selec[layers_selec==upper_craton_code].size
 n_tracked_mantle_lithosphere = layers_selec[layers_selec==mantle_lithosphere_code].size
 n_tracked_lower_crust1 = layers_selec[layers_selec==lower_crust1_code].size
-n_tracked_lower_crust2 = layers_selec[layers_selec==lower_crust2_code].size
+n_tracked_lower_crust2 = layers_selec[layers_selec==lower_crust2_code].size if(lower_crust2_code != lower_crust1_code) else 0 #the same layer if there is only one lower crust
 n_tracked_upper_crust = layers_selec[layers_selec==upper_crust_code].size
 n_tracked_decolement = layers_selec[layers_selec==decolement_code].size
 n_tracked_sediments = layers_selec[layers_selec==sediments_code].size

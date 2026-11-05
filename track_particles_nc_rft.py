@@ -17,11 +17,15 @@
 
 import numpy as np
 import os
+import sys
 import xarray as xr
 import subprocess
 import multiprocessing #needed to run pymp in macOS
 multiprocessing.set_start_method('fork') #needed to run pymp in macOS arm architectures
 import pymp
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__))) # post_processing folder, with functions/mandyocIO.py
+from functions.mandyocIO import get_velocity, get_layer_codes
 
 model_path = os.getcwd() # Get local file
 model_name = model_path.split('/')[-1]
@@ -56,14 +60,22 @@ if('He' in model_name):
 else:
     take_asthenosphere = False
 
-#select the extension rate:
-if('W1' in model_name or 'S1' in model_name):
-    v=1 #cm/yr #For groups 1,2 and 3
-if('W2' in model_name or 'S2' in model_name):
-    v=2 #cm/yr #For groups 4,5 and 6
-if('W3' in model_name or 'S3' in model_name):
-    v=3 #cm/yr #For groups 7,8 and 9
+#select the extension rate [cm/yr]: from infos_*.txt (tapioca) or input_velocity_0.txt,
+#or, without these files, from the model name
+v = get_velocity(model_path)
+if(v is not None):
+    print(f"Velocity from infos_*.txt or input_velocity_0.txt: {v} cm/yr")
+else:
+    v=1
+    if('W1' in model_name or 'S1' in model_name):
+        v=1 #cm/yr #For groups 1,2 and 3
+    if('W2' in model_name or 'S2' in model_name):
+        v=2 #cm/yr #For groups 4,5 and 6
+    if('W3' in model_name or 'S3' in model_name):
+        v=3 #cm/yr #For groups 7,8 and 9
+    print(f"Velocity from the model name: {v} cm/yr")
 
+instant_to_take = 40 #Myr, for the other velocities
 if(v==1):
     instant_to_take = 40 #Myr
 if(v==2):
@@ -136,6 +148,18 @@ lower_crust_code = 4
 upper_crust_code = 5
 air_code = 6
 
+#Codes from the names of the layers in infos_*.txt (tapioca), when the model has it
+layer_codes = get_layer_codes(model_path)
+if(layer_codes is not None):
+    asthenosphere_code = layer_codes['asthenosphere']
+    mantle_lithosphere1_code = layer_codes['mantle_lithosphere1']
+    seed_code = layer_codes['seed']
+    mantle_lithosphere2_code = layer_codes['mantle_lithosphere2']
+    lower_crust_code = layer_codes['lower_crust']
+    upper_crust_code = layer_codes['upper_crust']
+    air_code = layer_codes['air']
+    print(f"Layer codes from infos_*.txt: {layer_codes}")
+
 print(f"Selecting particles between {x_begin/1000} and {x_end/1000} km, above {search_thickness/1000} km")
 
 if(take_asthenosphere):
@@ -152,7 +176,7 @@ print(f"Number of tracked particles (n): {np.size(part_selec)}, where:")
 
 n_tracked_ast = layers_selec[layers_selec==asthenosphere_code].size
 n_tracked_mantle_lithosphere1 = layers_selec[layers_selec==mantle_lithosphere1_code].size
-n_tracked_mantle_lithosphere2 = layers_selec[layers_selec==mantle_lithosphere2_code].size
+n_tracked_mantle_lithosphere2 = layers_selec[layers_selec==mantle_lithosphere2_code].size if(mantle_lithosphere2_code != mantle_lithosphere1_code) else 0 #the same layer if there is only one lithospheric mantle
 n_tracked_lower_crust = layers_selec[layers_selec==lower_crust_code].size
 n_tracked_upper_crust = layers_selec[layers_selec==upper_crust_code].size
 

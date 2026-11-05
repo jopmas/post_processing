@@ -33,7 +33,7 @@ sys.path.append(os.path.abspath(path_to_functions))
 
 if '' in sys.path:
     sys.path.remove('')
-from functions.mandyocIO import find_nearest, plot_lithology_legend
+from functions.mandyocIO import find_nearest, plot_lithology_legend, get_lithology_colors, get_layer_codes
 
 ####################################################################################################################################
 model_path = os.getcwd() # Get local file
@@ -124,7 +124,6 @@ particles_layers = trackdataset.particles_layers.values[::-1] #code of the track
 
 double_keel = True
 # double_keel = False
-print(f"double_keel model") if(double_keel) else print("homogeneous model")
 
 if(double_keel):
     asthenosphere_code = 0
@@ -149,6 +148,24 @@ else:
     decolement_code = 6
     sediments_code = 7
     air_code = 8
+
+#Codes from the names of the layers in infos_*.txt (tapioca), when the model has it
+layer_codes = get_layer_codes(model_path)
+if(layer_codes is not None):
+    double_keel = layer_codes['lower_craton'] >= 0
+    asthenosphere_code = layer_codes['asthenosphere']
+    lower_craton_code = layer_codes['lower_craton']
+    upper_craton_code = layer_codes['upper_craton']
+    mantle_lithosphere_code = layer_codes['mantle_lithosphere']
+    lower_crust1_code = layer_codes['lower_crust1']
+    seed_code = layer_codes['seed']
+    lower_crust2_code = layer_codes['lower_crust2']
+    upper_crust_code = layer_codes['upper_crust']
+    decolement_code = layer_codes['decolement']
+    sediments_code = layer_codes['sediments']
+    air_code = layer_codes['air']
+    print(f"Layer codes from infos_*.txt: {layer_codes}")
+print(f"double_keel model") if(double_keel) else print("homogeneous model")
 
 T_initial = T[0]
 P_initial = P[0]
@@ -489,31 +506,11 @@ color_ast = (207./cr,226./cr,205./cr)
 
 
 #lithology.nc from tapioca has the Mandyoc layer codes (order of the layers in interfaces.txt, 0 = bottom layer).
-#Each code gets the color of its layer.
-if(double_keel):
-    lithology_colors = {asthenosphere_code: color_ast,
-                        lower_craton_code: color_mlit_lc,
-                        upper_craton_code: color_mlit_uc,
-                        mantle_lithosphere_code: color_lit,
-                        lower_crust1_code: color_lc,
-                        seed_code: color_lc,
-                        lower_crust2_code: color_lc,
-                        upper_crust_code: color_uc,
-                        decolement_code: color_dec,
-                        sediments_code: color_sed,
-                        air_code: color_air}
-else:
-    lithology_colors = {asthenosphere_code: color_ast,
-                        mantle_lithosphere_code: color_lit,
-                        lower_crust1_code: color_lc,
-                        seed_code: color_lc,
-                        lower_crust2_code: color_lc,
-                        upper_crust_code: color_uc,
-                        decolement_code: color_dec,
-                        sediments_code: color_sed,
-                        air_code: color_air}
+#Each code gets the color of its layer, see get_lithology_colors (functions/mandyocIO.py).
+lithology_colors = 'auto' #any number of layers: colors from the names of the layers (infos_*.txt), see get_lithology_colors
+# lithology_colors = 'double_keel'
 
-colors = [lithology_colors[code] for code in range(air_code+1)]
+colors = get_lithology_colors(model_path, lithology_colors)
 
 #Creating a custom colormap according to the list of colors defined above.
 # This colormap will be used to plot the lithology mesh, where each lithology code is represented by a specific color.
