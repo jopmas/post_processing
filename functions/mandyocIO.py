@@ -751,6 +751,122 @@ def measure_margins_width(model_path, step, Nx, Nz, Lx, Lz, xl_begin=600, xl_end
 
     return marginl_begin, marginl_end, marginl_wdt, marginr_begin, marginr_end, marginr_wdt
 
+def find_far_field(model_path, width=200.0e3, edge=100.0e3, crust_min=25.0e3, lab_max=150.0e3, rho_crust=2900.0,
+                   temperature_lab=1300.0, n_steps=30, tolerance=0.1, deformed_crust=10.0e3,
+                   max_crust_change=5.0e3, max_strain=1.0):
+    '''
+    Find the far field of a scenario: the window of non-cratonic continental columns that changes the least during
+    the whole simulation. The window is the same in all time steps.
+
+    Parameters
+    ----------
+    model_path: str
+        Path to the scenario directory (with density.nc, temperature.nc, surface.nc and strain.nc).
+
+    width: float
+        Width of the window [m].
+
+    edge: float
+        Distance from the sides of the model where the window is not allowed [m].
+
+    crust_min: float
+        Minimum thickness of the crust in the first time step [m]. Excludes the oceanic columns.
+
+    lab_max: float
+        Maximum depth of the base of the lithosphere in the first time step [m]. Excludes the cratonic columns.
+
+    rho_crust: float
+        Rock with a density below rho_crust is crust [kg/m3].
+
+    temperature_lab: float
+        Temperature of the base of the lithosphere [oC].
+
+    n_steps: int
+        Number of time steps used, equally spaced from the first to the last one.
+
+    tolerance: float
+        Windows with a score up to (1 + tolerance) times the lowest one are equivalent. The score is the mean of the
+        largest changes of the thickness of the crust and of the surface. The chosen one is the farthest from the
+        invalid columns and from the columns where the crust changed by more than deformed_crust.
+
+    deformed_crust: float
+        Change of the thickness of the crust of a deformed column [m].
+
+    max_crust_change, max_strain: float
+        Limits for the largest change of the thickness of the crust [m] and for the mean strain of the crust in the
+        window. Above them, deformed is True in the result.
+
+    Returns
+    -------
+    far_field: dict
+        x_begin and x_end [m], crust_change and surface_change [m] (largest ones in the window), strain (mean of the
+        largest strain of the crust of each column) and deformed (bool).
+    '''
+    density = xr.open_dataset(f"{model_path}/density.nc", cache=False, engine="h5netcdf")["density"]
+    temperature = xr.open_dataset(f"{model_path}/temperature.nc", cache=False, engine="h5netcdf")["temperature"]
+    surface = xr.open_dataset(f"{model_path}/surface.nc", cache=False, engine="h5netcdf")["surface"]
+    strain = xr.open_dataset(f"{model_path}/strain.nc", cache=False, engine="h5netcdf")["strain"]
+
+    x = density.x.values.astype(float)
+    z = density.z.values.astype(float)
+    surface_x = surface.x.values.astype(float)
+    dx = x[1] - x[0]
+    dz = z[1] - z[0]
+
+    def fields(i):
+        return (density.isel(time=i).transpose("z", "x").values.astype(float),
+                np.interp(x, surface_x, surface.isel(time=i).values.astype(float)))
+
+    def crust_thickness(density_i, surface_i):
+        return ((density_i < rho_crust) & (density_i >= 1200.0) & (z[:, None] <= surface_i[None, :])).sum(axis=0)*dz
+
+    density_0, surface_0 = fields(0)
+    temperature_0 = temperature.isel(time=0).transpose("z", "x").values.astype(float)
+    crust_0 = crust_thickness(density_0, surface_0)
+
+    #Rows go from the bottom to the top: the base of the lithosphere is the last row at temperature_lab or above
+    hot = temperature_0 >= temperature_lab
+    last_hot = hot.shape[0] - 1 - np.argmax(hot[::-1], axis=0)
+    lab_depth = surface_0 - z[last_hot]
+
+    valid = (crust_0 >= crust_min) & (lab_depth <= lab_max) & (x >= x[0] + edge) & (x <= x[-1] - edge)
+
+    #Largest changes during the simulation
+    crust_change = np.zeros(x.size)
+    surface_change = np.zeros(x.size)
+    strain_crust = np.zeros(x.size)
+    n_times = density.sizes["time"]
+    for i in np.unique(np.linspace(0, n_times - 1, n_steps).astype(int)):
+        density_i, surface_i = fields(int(i))
+        crust_change = np.maximum(crust_change, np.abs(crust_thickness(density_i, surface_i) - crust_0))
+        surface_change = np.maximum(surface_change, np.abs(surface_i - surface_0))
+        strain_i = strain.isel(time=int(i)).transpose("z", "x").values.astype(float)
+        strain_crust = np.maximum(strain_crust, np.where((density_i < rho_crust) & (density_i >= 1200.0), strain_i, 0.0).max(axis=0))
+
+    n_window = int(round(width/dx))
+    windows = np.array([j for j in range(x.size - n_window) if valid[j:j+n_window+1].all()])
+    if(windows.size == 0):
+        raise ValueError("No window of non-cratonic continental columns. Choose x_far_begin and x_far_end by hand.")
+
+    score = np.array([crust_change[j:j+n_window+1].mean() + surface_change[j:j+n_window+1].mean() for j in windows])
+
+    #Between the equivalent windows, the farthest from the deformed columns, the sides and the other lithospheres
+    equivalent = windows[score <= score.min()*(1.0 + tolerance)]
+    avoid_columns = x[(crust_change > deformed_crust) | (~valid)]
+    distance = np.array([min(np.abs(avoid_columns - x[j]).min(), np.abs(avoid_columns - x[j+n_window]).min()) for j in equivalent])
+    chosen = equivalent[np.argmax(distance)]
+
+    window = slice(chosen, chosen + n_window + 1)
+    far_field = {"x_begin": x[chosen], "x_end": x[chosen + n_window],
+                 "crust_change": crust_change[window].max(), "surface_change": surface_change[window].max(),
+                 "strain": strain_crust[window].mean()}
+    far_field["deformed"] = bool(far_field["crust_change"] > max_crust_change or far_field["strain"] > max_strain)
+
+    for dataarray in (density, temperature, surface, strain):
+        dataarray.close()
+
+    return far_field
+
 def trim_axs(axs, N):
     '''Little helper to index the axs as 1D list
 

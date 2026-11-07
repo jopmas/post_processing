@@ -52,6 +52,7 @@ from its name (`LAYER_NAME_COLORS`), for any number of layers.
     measure_crust_from_lithology
     measure_crustal_thickness
     measure_margins_width
+    find_far_field
 ```
 
 ---

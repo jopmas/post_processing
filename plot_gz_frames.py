@@ -100,8 +100,9 @@ with xr.open_dataset(f"{model_path}/_gz_evolution.nc", engine="h5netcdf") as gz_
 #The topography is relative to the sea level
 topo_ylims = [np.floor((surface_sunk.min() - sea_level)/topo_step)*topo_step, np.ceil((surface.max() - sea_level)/topo_step)*topo_step]
 
-#The same limits in all frames
-gz_ylims = [np.floor(gz.min()/gz_step)*gz_step, np.ceil(gz.max()/gz_step)*gz_step]
+#The same limits in all frames. The first and the last 100 km have artifacts of the sides of the model, so they do not set them
+cond_inner = (x_gz >= x_gz[0] + 100.0) & (x_gz <= x_gz[-1] - 100.0)
+gz_ylims = [np.floor(gz[:, cond_inner].min()/gz_step)*gz_step, np.ceil(gz[:, cond_inner].max()/gz_step)*gz_step]
 
 #index of each step of _gz_evolution.nc inside the mesh files
 idx_mesh = np.searchsorted(steps_mesh, steps_gz)
@@ -148,7 +149,7 @@ with pymp.Parallel() as p:
         ax_gz.grid(True, alpha=0.3)
         ax_gz.text(0.01, 1.05, f'{model_name}', fontsize=fsize, transform=ax_gz.transAxes)
         ax_gz.text(0.99, 1.05, f'Time = {times_gz[k]:.2f} Myr', fontsize=fsize, ha='right', transform=ax_gz.transAxes)
-        ax_gz.text(0.01, 0.06, f'{obs_height:.0f} m above the water or the rock', fontsize=fsize-3, transform=ax_gz.transAxes)
+        ax_gz.text(0.01, 0.06, f'Flat level {obs_height/1000:.0f} km above the highest surface', fontsize=fsize-3, transform=ax_gz.transAxes)
 
         #Topography
         ax_topo.axhline(0, color='0.6', lw=0.8, ls='--')

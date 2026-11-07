@@ -8,14 +8,18 @@
 # effective density in each time step with harmonica.prism_gravity and #
 # writes _gz_evolution.nc, with g_z (time, x) in mGal.                 #
 #                                                                      #
-# - Reference: median, in each depth, of the far-field columns         #
-#   (x_far_begin to x_far_end) in the same time step, without water.   #
+# - Far field: found by find_far_field (functions/mandyocIO.py) or     #
+#   chosen with x_far_begin and x_far_end.                             #
+# - Reference: median, in each depth, of the far-field columns in the  #
+#   same time step, without water and without mass above the sea       #
+#   level. g_z is zero in the far field.                               #
 # - Surface: the top of the rock follows surface.nc inside the cells.  #
 # - Water (post-processing): fills the columns below the sea level,    #
 #   which sink by Airy isostasy, so the mass of each column does not   #
 #   change.                                                            #
-# - Observation points: obs_height above the water or the rock, as in  #
-#   surface free-air anomalies.                                        #
+# - Observation points: flat level, the same in all time steps,        #
+#   obs_height above the highest surface of the whole simulation.      #
+# - The columns at the sides extend the model in x.                    #
 ########################################################################
 
 ###########################################################################
@@ -35,6 +39,35 @@
 #  The model is 2D, so the prisms are long in the northing direction.     #
 #  half_y of 1e7 m and 1e9 m differ by only 0.02 mGal, and half_y is      #
 #  3.2e7 m with half_y_factor = 20.                                       #
+#                                                                         #
+# Far field found in each scenario                                        #
+#  The non-cratonic continental columns, away from the sides, that change #
+#  the least during the whole simulation (crust and surface). One window  #
+#  for all time steps, so the level of the profiles does not jump. The    #
+#  columns most similar to PREM were not used: their misfit is about the  #
+#  same everywhere (about 250 kg/m3), so the search chose rifted or       #
+#  oceanic regions that jumped between time steps. With the reference     #
+#  below, the window only sets the zero level: in                         #
+#  compression_left_dec, two windows differ by 0.008 mGal.                #
+#                                                                         #
+# Reference without mass above the sea level                              #
+#  As for the ellipsoid in real data, the reference has no mass above the #
+#  sea level. The shift of the reference is removed with the mean of the  #
+#  far field. The model is extended in x with its side columns, so that   #
+#  the reference only shifts the profile. This increases the artifacts at #
+#  the sides: do not use the first and the last 100 km.                   #
+#                                                                         #
+# Observation at a flat level above the highest surface                   #
+#  Decided with Leonardo Uieda: no rock is above the observation level,   #
+#  and the height does not change with x or with time, so the profiles    #
+#  can be compared between time steps. Levels that followed the surface   #
+#  had points above and below the rock of the reference (+421 mGal in the #
+#  ocean of compression_left_dec) and inside the mean density of the cell #
+#  with the surface (about 150 mGal with cells of 2 km).                  #
+#  Consequence: the level depends on each scenario, and it is farther     #
+#  from the sources where the topography is low, which smooths and        #
+#  reduces their anomalies. Compare with data at the same height, not     #
+#  directly with surface free-air anomalies.                              #
 #                                                                         #
 # Reference density: far-field columns in the same time step              #
 #  - Not the first time step: the far field changes during the model. The #
@@ -77,18 +110,12 @@
 #  for each scenario instead of a fixed value. Columns slightly below it  #
 #  also get water.                                                        #
 #                                                                         #
-# Observation points                                                      #
-#  At the water or rock surface, because the surface free-air anomalies   #
-#  of real data (e.g. WGM2012) are given there. A flat level does not     #
-#  compare with them, because it is farther from the sources where the    #
-#  topography is low. The surface is rough and the mesh is coarse, so the #
-#  peaks have steps. The profile is not filtered to the resolution of the #
-#  data here.                                                             #
-#                                                                         #
-# Not included                                                            #
+# Not included                                                          #
 #  Sediments, surface processes and flexure. The peaks at the margins are #
 #  still high (about 300 mGal at 20-30 Myr). In a test after the          #
-#  simulation (t = 20, 40 and 60 Myr), most of the difference comes from  #
+#  simulation (t = 20, 40 and 60 Myr), with points following the surface  #
+#  and a far field chosen by hand, so with other absolute values, most of #
+#  the difference comes from                                              #
 #  the scarp: without the rock above the sea level, the peaks are about   #
 #  90-130 mGal, or about 150 mGal with isostatic rebound. A wedge of      #
 #  sediments up to 8 km thick changes the peaks by about 20 mGal or less. #
@@ -104,6 +131,9 @@ import multiprocessing #needed to run pymp in macOS
 multiprocessing.set_start_method('fork') #needed to run pymp in macOS arm architectures
 import pymp
 
+sys.path.append(os.path.dirname(os.path.abspath(__file__))) # post_processing folder, with functions/mandyocIO.py
+from functions.mandyocIO import find_far_field
+
 model_path = os.getcwd() # Get local file
 model_name = model_path.split('/')[-1]
 
@@ -113,15 +143,16 @@ model_name = model_path.split('/')[-1]
 
 alpha = 3.28e-5 #thermal expansion coefficient [1/oC]
 
-#Far-field columns: reference density and sea level
-x_far_begin = 200.0e3 #m
-x_far_end = 400.0e3 #m
+#Observation level: flat and the same in all time steps, obs_height above the highest surface of the whole simulation
+obs_height = 1.0e3 #m
+
+#Far-field columns: reference density, sea level and zero of g_z
+x_far_begin = None #m. None: found by find_far_field
+x_far_end = None #m
 
 water = True #fills the columns below the sea level with water, with Airy isostasy
 rho_water = 1000.0 #kg/m3
 rho_air = 1.0 #kg/m3
-
-obs_height = 100.0 #m, above the water or the rock
 
 half_y_factor = 20.0 #half length of the prisms in the northing direction, in units of Lx: extends the 2D model
 
@@ -163,8 +194,13 @@ def sink_columns(rock, surface_i, z_water):
         sunk[:, j] = np.interp(z + shift[j], z, rock[:, j])
     return sunk, surface_i - shift
 
+def cut_reference(reference, z_water):
+    '''Reference density without mass above z_water: only air there, inside the cells.'''
+    fraction_below = np.clip((z_water - z_bottom)/dz, 0.0, 1.0)[:, None]
+    return fraction_below*reference + (1.0 - fraction_below)*rho_air
+
 ###########################################################################
-# Reading the mesh and the surface                                        #
+# Reading the mesh and the surface                                       #
 ###########################################################################
 
 #tapioca files: data (time, z, x), x from 0 to Lx and z from -Lz to 0 [m]
@@ -211,6 +247,15 @@ surface = np.array([np.interp(x, surface_x, surface_all[i]) for i in idx_times])
 # Far-field columns and sea level                                         #
 ###########################################################################
 
+if(x_far_begin is None or x_far_end is None):
+    far_field = find_far_field(model_path)
+    x_far_begin = far_field["x_begin"]
+    x_far_end = far_field["x_end"]
+    print(f"Far field found: crust change up to {far_field['crust_change']/1000:.1f} km, "
+          f"surface change up to {far_field['surface_change']/1000:.1f} km, strain {far_field['strain']:.2f}")
+    if(far_field["deformed"]):
+        print("WARNING: the far field is deformed. Check it, or choose x_far_begin and x_far_end.")
+
 far_columns = (x >= x_far_begin) & (x <= x_far_end)
 if(not far_columns.any()):
     raise ValueError("No columns between x_far_begin and x_far_end.")
@@ -221,6 +266,16 @@ sea_level = float(surface_all[0, cond_sea].mean())
 
 print(f"Far-field columns between {x_far_begin/1000} and {x_far_end/1000} km")
 print(f"Sea level: {sea_level} m. Water: {water}")
+
+#Observation level above all the surfaces (surface_all has all the time steps, whatever the stride)
+highest_surface = max(float(surface_all.max()), sea_level)
+z_obs = highest_surface + obs_height
+coordinates = (x, np.zeros_like(x), np.full_like(x, z_obs))
+print(f"Highest surface: {highest_surface} m. z_obs: {z_obs} m")
+
+#The surface is inside the mean density of its cell, so the cell can reach above it
+if(z_obs < np.ceil((highest_surface - z_bottom[0])/dz)*dz + z_bottom[0]):
+    print("WARNING: z_obs is inside the cell of the highest surface. Use obs_height of at least dz to avoid it.")
 
 ###########################################################################
 # Prisms                                                                  #
@@ -240,6 +295,25 @@ prisms = np.column_stack([
                         Z.ravel() + dz/2,
                         ])
 
+#The columns at the sides extend the model in x
+prisms_left = np.column_stack([
+                        np.full(Nz, x[0] - dx/2 - half_y),
+                        np.full(Nz, x[0] - dx/2),
+                        np.full(Nz, -half_y),
+                        np.full(Nz, half_y),
+                        z_bottom,
+                        z_top,
+                        ])
+prisms_right = np.column_stack([
+                        np.full(Nz, x[-1] + dx/2),
+                        np.full(Nz, x[-1] + dx/2 + half_y),
+                        np.full(Nz, -half_y),
+                        np.full(Nz, half_y),
+                        z_bottom,
+                        z_top,
+                        ])
+prisms = np.vstack([prisms, prisms_left, prisms_right])
+
 print(f"Number of prisms: {prisms.shape[0]}, observation points: {Nx}, time steps: {n_times}")
 
 ###########################################################################
@@ -252,7 +326,6 @@ hm.prism_gravity((0.0, 0.0, 1.0), [-1.0, 1.0, -1.0, 1.0, -2.0, -1.0], 1.0, field
 #We need shared pymp arrays to store data.
 gz = pymp.shared.array((n_times, Nx), dtype=np.float64)
 surface_sunk = pymp.shared.array((n_times, Nx), dtype=np.float64) #surface with the water load
-z_obs = pymp.shared.array((n_times, Nx), dtype=np.float64)
 gz[:] = np.nan
 
 sys.stdout.flush() #otherwise, when the output goes to a file, each forked process writes the buffered text again
@@ -272,21 +345,21 @@ with pymp.Parallel() as p:
 
         columns_dry = get_columns(rock, surface[it])
         reference = np.median(columns_dry[:, far_columns], axis=1, keepdims=True) #reference density in each depth
+        reference = cut_reference(reference, sea_level)
 
         if(water):
             rock_sunk, surface_sunk[it] = sink_columns(rock, surface[it], sea_level)
             columns = get_columns(rock_sunk, surface_sunk[it], sea_level)
-            z_obs[it] = np.maximum(surface_sunk[it], sea_level) + obs_height
         else:
             surface_sunk[it] = surface[it]
             columns = columns_dry
-            z_obs[it] = surface[it] + obs_height
 
         drho = columns - reference #density contrast
+        density_contrast = np.concatenate([drho.ravel(), drho[:, 0], drho[:, -1]]) #with the columns that extend the model
 
         #parallel=False: the time steps are already split between the pymp processes
-        coordinates = (x, np.zeros_like(x), z_obs[it])
-        gz[it] = hm.prism_gravity(coordinates, prisms, drho.ravel(), field="g_z", parallel=False)
+        gz_i = hm.prism_gravity(coordinates, prisms, density_contrast, field="g_z", parallel=False)
+        gz[it] = gz_i - gz_i[far_columns].mean() #the far field is the zero of g_z
 
         p.print(f"Thread {p.thread_num}: time {time[it]:.2f} Myr, step {step[it]} ({it+1}/{n_times})")
 
@@ -303,7 +376,6 @@ ds = xr.Dataset(
         "step": (["time"], step),
         "surface": (["time", "x"], surface, {"long_name": "surface of the model on the mesh x", "units": "m"}),
         "surface_sunk": (["time", "x"], np.array(surface_sunk), {"long_name": "surface with the water load", "units": "m"}),
-        "z_obs": (["time", "x"], np.array(z_obs), {"long_name": "height of the observation points", "units": "m"}),
     },
     coords={
         "time": ("time", time, {"units": "Myr"}),
@@ -317,6 +389,7 @@ ds = xr.Dataset(
         "water": int(water),
         "rho_water": rho_water,
         "obs_height": obs_height,
+        "z_obs": z_obs,
         "alpha": alpha,
         "half_y": half_y,
     },
