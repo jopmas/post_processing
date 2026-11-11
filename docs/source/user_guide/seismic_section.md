@@ -86,6 +86,39 @@ notebook looks for this file: if it exists and its `parameters` are the current 
 instead (the notebook then runs in a few minutes); otherwise the simulations run and the file is written again.
 Set `RERUN = True` to force the simulations.
 
+## Multithreaded version
+
+`seismic_section_parallel.py` and `seismic_section_parallel.ipynb` are the same pipeline, with the tremelique time
+step split between the cores of the computer. In tremelique the time step of `Acoustic` (`timestep_esg`,
+`apply_damping` and `nonreflexive_bc`) is compiled with numba but runs on one core; the time loop cannot be
+parallelised (each step needs the two previous ones), but within a step the cells are updated independently.
+`functions/tremelique_parallel.py` has copies of these kernels with `parallel=True` and the loops over the rows
+split between threads (`numba.prange`). Each cell gets the same operations, so the results are identical to the
+serial version, bit by bit.
+
+| | Serial | Multithreaded (12 threads) |
+| --- | --- | --- |
+| Zoom 750–900 km × 36 km (`DXZ = 20` m): exploding reflector + RTM | ~36 min | ~6 min |
+| Whole notebook | ~38 min | ~9 min |
+
+The number of threads is numba's (all the cores by default; change it with `numba.set_num_threads` or the
+`NUMBA_NUM_THREADS` environment variable). The outputs have the prefix `seismic_section_parallel_` (figures and
+`seismic_section_parallel_zoom_<window>.nc`), so they do not overwrite those of the serial version.
+
+`functions/tremelique_parallel.py` also has `ParallelAcoustic`, a drop-in replacement for `tremelique.Acoustic`
+(same arguments, HDF5 cache, `snapshot` and `animate`) for other uses of tremelique:
+
+```python
+import sys
+import tremelique
+sys.path.append("/path/to/post_processing")
+from functions.tremelique_parallel import ParallelAcoustic
+
+sim = ParallelAcoustic(velocity, density, spacing)
+sim.add_point_source((0, nx // 2), tremelique.RickerWavelet(1, 30))
+sim.run(1000)
+```
+
 ## Limitations
 
 - No sediments (the scenario has no surface processes).
