@@ -24,6 +24,10 @@ on a 1 km mesh are needed to resolve the faults and the serpentinization.
 
 ## Steps
 
+Both notebooks start with a flowchart of these steps, drawn by `plot_flowchart` of
+`functions/seismic_section_flowchart.py`.
+
+
 1. **Load** one time step (`TIME`) of the Mandyoc fields, cropped around the window, with depths referenced to sea
    level (the sticky air is removed).
 2. **Fine grid**: each lithology is smoothed and the largest one wins, so the contacts stay sharp without the

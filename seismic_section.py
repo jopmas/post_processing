@@ -45,6 +45,18 @@ from tremelique._utils import apply_damping
 # post_processing folder, with functions/mandyocIO.py (lithology colours of the videos)
 sys.path.append(str(Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()))
 from functions.mandyocIO import COLOR_WATER, get_lithology_colors  # noqa: E402
+from functions.seismic_section_flowchart import plot_flowchart  # noqa: E402
+
+# %% [markdown]
+# ## Flowchart
+#
+# From the Mandyoc outputs to the seismic sections. The numbers are those of
+# the sections of this notebook; green steps build the model, orange is the
+# convolutional section, purple is tremelique, grey is the cache of the zoom
+# and the outputs.
+
+# %%
+plot_flowchart(parallel=False)
 
 # %% [markdown]
 # ## How to read this notebook
