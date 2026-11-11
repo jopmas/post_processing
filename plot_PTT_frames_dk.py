@@ -487,7 +487,7 @@ fsize_sub_greenschiest = 4
 color_wedge = 'xkcd:orange' #orogenic wedge rocks 400<T<900 and P<2GPa
 color_mid_T = 'xkcd:teal' #subducted crustal rocks 400<T<900 and P>2GPa
 color_high_T_wedge = 'xkcd:raspberry' #orogenic wedge rocks T>=900 and P<2GPa
-color_high_T_subducted = 'xkcd:dirty purple' #subducted crustal rocks T>900 and P>2GPa
+color_high_T_subducted = 'xkcd:dirty purple' #subducted crustal rocks T>=900 and P>=2GPa
 
 
 steps = steps_mesh
@@ -520,8 +520,10 @@ cmap = ListedColormap(colors)
 np.seterr(divide='ignore')
 
 #strain shading limits (log10) used in the plot and in the legend
-strain_vmin = -1.5
-strain_vmax = 0.0
+# strain_vmin = -1.5
+# strain_vmax = 0.0
+strain_vmin = -0.5
+strain_vmax = 0.7
 strain_alpha = 0.2
 
 with pymp.Parallel() as p:
@@ -626,12 +628,12 @@ with pymp.Parallel() as p:
         # ax1.yaxis.set_label_position("left")
 
         axs[1].set_xlabel(r'Temperature [$^{\circ}$C]', fontsize=fsize)
-        axs[1].plot([-10,-10], [-10,-10], '-', color=color_wedge, markersize=markersize, label='Wedge LT', zorder=60)
-        axs[1].plot([-10,-10], [-10,-10], '-', color=color_mid_T, markersize=markersize, label='Subducted LT', zorder=60)
-        axs[1].plot([-10,-10], [-10,-10], '-', color=color_high_T_wedge, markersize=markersize, label='Wedge HT', zorder=60)
-        axs[1].plot([-10,-10], [-10,-10], '-', color=color_high_T_subducted, markersize=markersize, label='Subducted HT', zorder=60)
+        axs[1].plot([-10,-10], [-10,-10], '-', color=color_wedge, markersize=markersize, label='Orogenic wedge particles <900°C', zorder=60)
+        axs[1].plot([-10,-10], [-10,-10], '-', color=color_high_T_wedge, markersize=markersize, label='Orogenic wedge particles >900°C', zorder=60)
+        axs[1].plot([-10,-10], [-10,-10], '-', color=color_mid_T, markersize=markersize, label='Subducted particles <900°C', zorder=60)
+        axs[1].plot([-10,-10], [-10,-10], '-', color=color_high_T_subducted, markersize=markersize, label='Subducted particles >900°C', zorder=60)
 
-        axs[1].legend(loc='upper left', ncol=1, fontsize=8, handlelength=0, handletextpad=0, labelcolor='linecolor')
+        axs[1].legend(loc='upper left', ncol=1, fontsize=6, handlelength=0, handletextpad=0, labelcolor='linecolor')
 
         # ax1.legend(loc='center left', ncol=1, fontsize=6)
 
