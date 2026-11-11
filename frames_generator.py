@@ -77,14 +77,14 @@ datasets = [#Properties from mandyoc. Comment/uncomment to select properties of 
 properties = [#Properties from mandyoc. Comment/uncomment to select which ones you would like to plot
             #  'density',
             #  'radiogenic_heat',
-            #  'lithology', #default: lithology.nc shaded by the strain
+             'lithology', #default: lithology.nc shaded by the strain
             #  'pressure',
             #  'strain',
             #  'strain_rate',
             #  'temperature',
             #  'temperature_anomaly',
             #  'surface',
-             'viscosity'
+            #  'viscosity'
              ]
 #'lithology' is plotted by this script; the other properties are plotted with plot_property (functions/mandyocIO.py),
 #reading <property>.nc (heat.nc for radiogenic_heat). One set of frames, video and gif per property.
