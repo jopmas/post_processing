@@ -10,6 +10,10 @@ Scripts and notebooks to post-process Mandyoc models from the NetCDF files creat
   `pressure.nc`/`temperature.nc` and write `_track_xzPT_all_steps.nc`.
 - `plot_PTT_frames_dk.py`, `plot_PTT_frames_rft.py`: frames of the lithology with the P-T-t paths of
   `_track_xzPT_all_steps.nc` (temperature-coded for double keel, depth-coded for rifting), videos and gifs.
+- `plot_PTT_frames_rft2.py`: as `plot_PTT_frames_rft.py`, but only with the particles that, in the last step of the
+  tracking, are in exhumed lithospheric mantle (mantle right below the air in `lithology.nc`, ignoring an upper crust
+  on top thinner than `max_thin_crust_elements` elements) thicker than `min_exhumed_elements` elements (dz of the
+  Mandyoc mesh) in its column. Outputs with `plot_type` `*_exhumed`.
 - `frames_generator.py`: frames of the lithology, strain, isotherms and melt (accordion, rifting and double keel
   models, `lithology_colors = 'auto'`).
 - `plot_snapshots.py`: snapshots of the scenario (equally spaced steps from the first to the last one) with
