@@ -12,4 +12,5 @@ pipeline.md
 tracking.md
 frames.md
 geometries.md
+seismic_section.md
 ```

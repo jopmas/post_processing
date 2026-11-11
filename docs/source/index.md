@@ -19,6 +19,8 @@ the crust (crustal thickness and width of the rifted margins).
   `frames_generator.py`.
 - [Geometries notebook](user_guide/geometries.md): fields at chosen instants, crustal thickness and width of the
   margins.
+- [Synthetic seismic section](user_guide/seismic_section.md): `seismic_section.py` and `seismic_section.ipynb`,
+  synthetic seismic section of a rifted margin with tremelique.
 
 ## References
 

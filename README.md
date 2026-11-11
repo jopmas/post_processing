@@ -18,6 +18,7 @@ The scripts read **only** the `.nc` files created by the Julia scripts of tapIOc
 | `plot_PTT_frames_rft.py` | Frames of the lithology with the depth-coded P-T-t paths (rifting models). |
 | `frames_generator.py` | Frames and video of the lithology, strain, isotherms and melt (accordion, rifting and double keel models). |
 | `Geometries.ipynb` | Lithology (or other field) at chosen instants, crustal thickness and width of the margins. |
+| `seismic_section.py`, `seismic_section.ipynb` | Synthetic seismic section of a rifted margin (convolutional and [tremelique](https://www.fatiando.org/tremelique) with RTM), from the basement down. |
 | `plot_snapshots.py` | Snapshots of the scenario (beginning, middle and end) to see its general evolution. |
 | `pipeline.sh` | From the zip of a scenario: extraction, `.nc` files, cleaning, snapshots and video. |
 | `functions/mandyocIO.py` | Plotting functions used by the scripts (lithology legend, colorbars, P-T-t paths, `plot_property`). |
@@ -68,6 +69,7 @@ videos to make). See the [user guide](docs/source/index.md):
 - [Particle tracking](docs/source/user_guide/tracking.md)
 - [Frames and videos](docs/source/user_guide/frames.md)
 - [Geometries notebook](docs/source/user_guide/geometries.md)
+- [Synthetic seismic section](docs/source/user_guide/seismic_section.md)
 - [Reference of `functions/mandyocIO.py`](docs/source/references/mandyocIO.md)
 
 ## Documentation
