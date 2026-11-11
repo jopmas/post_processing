@@ -502,7 +502,7 @@ def find_nearest(array, value):
     return idx
 
 
-def read_tapioca_datasets(model_path, variables):
+def read_tapioca_datasets(model_path, variables, **kwargs):
     '''
     Read and merge the .nc files created by tapioca (meshes2netcdf.jl) of the given variables.
 
@@ -515,13 +515,16 @@ def read_tapioca_datasets(model_path, variables):
         Mandyoc properties (e.g. 'density', 'temperature', 'strain', 'melt', 'incremental_melt', 'radiogenic_heat').
         'melt', 'incremental_melt' and 'radiogenic_heat' are read from Phi.nc, dPhi.nc and heat.nc.
 
+    **kwargs:
+        Passed to :func:`xarray.open_dataset` (e.g. cache=False, engine='h5netcdf' inside pymp).
+
     Returns
     -------
     dataset: :class:`xarray.Dataset`
         Data (time, z, x). The heat is named radiogenic_heat, as in plot_property.
     '''
     file_names = {'melt': 'Phi', 'incremental_melt': 'dPhi', 'radiogenic_heat': 'heat'}
-    datasets = [xr.open_dataset(f"{model_path}/{file_names.get(variable, variable)}.nc") for variable in dict.fromkeys(variables)]
+    datasets = [xr.open_dataset(f"{model_path}/{file_names.get(variable, variable)}.nc", **kwargs) for variable in dict.fromkeys(variables)]
     dataset = xr.merge(datasets, compat='override')
     if('heat' in dataset):
         dataset = dataset.rename({'heat': 'radiogenic_heat'})

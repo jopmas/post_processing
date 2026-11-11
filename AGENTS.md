@@ -15,7 +15,8 @@ Scripts and notebooks to post-process Mandyoc models from the NetCDF files creat
   on top thinner than `max_thin_crust_elements` elements) thicker than `min_exhumed_elements` elements (dz of the
   Mandyoc mesh) in its column. Outputs with `plot_type` `*_exhumed`.
 - `frames_generator.py`: frames of the lithology, strain, isotherms and melt (accordion, rifting and double keel
-  models, `lithology_colors = 'auto'`).
+  models, `lithology_colors = 'auto'`). `properties` defaults to `['lithology']`; the other properties are plotted
+  with `plot_property` (one set of frames, video and gif per property).
 - `plot_snapshots.py`: snapshots of the scenario (equally spaced steps from the first to the last one) with
   `plot_property`, based on `Geometries.ipynb` without the measurements of the crust.
 - `pipeline.sh`: from the zip of a scenario: extraction, `0_organize_outputs.sh`, `meshes2netcdf.jl` and

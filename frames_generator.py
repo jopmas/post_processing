@@ -32,7 +32,7 @@ sys.path.append(os.path.abspath(path_to_functions))
 
 if '' in sys.path:
     sys.path.remove('')
-from functions.mandyocIO import change_dataset, plot_property, plot_lithology_legend, get_lithology_colors
+from functions.mandyocIO import change_dataset, plot_property, plot_lithology_legend, get_lithology_colors, read_tapioca_datasets
 
 ####################################################################################################################################
 model_path = os.getcwd() # Get local file
@@ -77,15 +77,17 @@ datasets = [#Properties from mandyoc. Comment/uncomment to select properties of 
 properties = [#Properties from mandyoc. Comment/uncomment to select which ones you would like to plot
             #  'density',
             #  'radiogenic_heat',
-             'lithology',
+            #  'lithology', #default: lithology.nc shaded by the strain
             #  'pressure',
             #  'strain',
             #  'strain_rate',
             #  'temperature',
             #  'temperature_anomaly',
             #  'surface',
-            #  'viscosity'
+             'viscosity'
              ]
+#'lithology' is plotted by this script; the other properties are plotted with plot_property (functions/mandyocIO.py),
+#reading <property>.nc (heat.nc for radiogenic_heat). One set of frames, video and gif per property.
 
 #######################################################
 # Read ascii outputs and save them as xarray.Datasets #
@@ -189,8 +191,13 @@ color_lower_crust='xkcd:brown'
 
 color_incremental_melt = 'xkcd:bright pink'
 color_depleted_mantle='xkcd:bright purple'
-# topo_from_density = False
-topo_from_density = True
+#air/crust interface of the properties plotted with plot_property (not 'lithology'):
+#False: from surface.nc (topography of Mandyoc); True: from the density (density.nc)
+topo_from_density = False
+# topo_from_density = True
+if(not topo_from_density and not os.path.isfile(f"{model_path}/surface.nc")):
+    print("No surface.nc: the air/crust interface is taken from the density (density.nc).")
+    topo_from_density = True
 
 linewidth = 0.1
 markersize = 4
@@ -255,100 +262,130 @@ xxA, yyA = np.meshgrid(xA, yA)
 
 chunk_size = 4
 
+isotherms = [500, 600, 700, 800, 900, 1300] #oC
+
+xlims = [0, Lx/1000]
+ylims = [-Lz/1000+40, 0+40]
+# xlims = [1600, 2200]
+# ylims = [-150, 40]
+ylims_surface = [-6, 6] #km, topography (prop = 'surface')
+
+def frame_prefix(prop):
+    '''Prefix of the frames, video and gif of prop: _output/<model>_<prop>[_MeltFrac]'''
+    prefix = f"{model_name}_{prop}"
+    if(plot_melt):
+        prefix = f"{prefix}_MeltFrac"
+    return prefix
+
+#properties plotted with plot_property and the .nc files that it needs
+#(density: air and topography; temperature: isotherms; Phi.nc and dPhi.nc: melt)
+other_properties = [prop for prop in properties if prop != 'lithology']
+variables = ['density', 'temperature']
+variables += [prop for prop in other_properties if prop not in ['temperature_anomaly', 'surface']]
+if(plot_melt):
+    variables += ['melt', 'incremental_melt']
+
+def plot_lithology_frame(axs, i):
+    '''Lithology of lithology.nc shaded by the strain, isotherms and melt of the time step i (prop = 'lithology')'''
+    air = density.isel(time=i).values < 1200.0 #tapioca keeps the values in the air: set them to zero there
+
+    axs.imshow(lithology.isel(time=i).values[::-1, :], aspect='auto', extent=(0, Lx/1000, -Lz/1000+40, 40), cmap=cmap, vmin=-0.5, vmax=len(colors)-0.5, alpha=1.0)
+
+    # axs.imshow(np.log10(strain), extent=(0, Lx/1000, -Lz/1000+40, 40), cmap="Greys", vmin=-0.5, vmax=0.9, alpha=0.2)
+    axs.imshow(np.log10(np.where(air, 0.0, strain.isel(time=i).values)[::-1, :]), extent=(0, Lx/1000, -Lz/1000+40, 40), cmap="Greys", vmin=-0.5, vmax=0.9, alpha=0.2, aspect='auto')
+    if(plot_isotherms):
+        axs.contour(x, z+40, temperature.isel(time=i).values, levels=isotherms, colors='r', linewidths=1.0)
+    axs.set_ylim(ylims)
+    axs.set_xlim(xlims)
+
+    #lithology/strain legend with fixed size [inches], whatever the size of the figure
+    plot_lithology_legend(axs, colors=[color_uc, color_lc, color_lit, color_ast], vmin=-0.5, vmax=0.9, alpha=0.2,
+                          position=(0.97, 0.25), loc='lower right')
+
+    if(plot_melt):
+        incremental_melt_i = np.where(air, 0.0, incremental_melt.isel(time=i).values)[::,:]
+        melt_i = np.where(air, 0.0, melt.isel(time=i).values)[::,:]
+        #Plotting incremental melt
+        color_incremental_melt = 'xkcd:bright pink'
+        color_depleted_mantle='xkcd:purple'
+
+        incremental_melt_i[incremental_melt_i == 0] = np.nan # Set zero values to NaN to avoid plotting them
+        melt_i[melt_i == 0] = np.nan # Set zero values to NaN to avoid plotting them
+
+        axs.contourf(xx, zz+40, incremental_melt_i, colors=color_incremental_melt, alpha=0.4, zorder=30)
+        axs.contourf(xx, zz+40, melt_i, colors=color_depleted_mantle, alpha=0.4, zorder=20)
+        #plotting melt legend
+        text_fsize = 12
+        axs.text(0.10, 1.035, r'Melt Fraction $\left(\frac{\partial \phi}{\partial t}\right)$', color='xkcd:bright pink', fontsize=text_fsize, transform=axs.transAxes, zorder=60)
+        axs.text(0.25, 1.035, r'Depleted Mantle ($\phi$)', color='xkcd:bright purple', fontsize=text_fsize, transform=axs.transAxes, zorder=60)
+
 with pymp.Parallel() as p:
     # for i in p.range(start, end-step, step):
     for chunk_start in p.range(start, end, chunk_size):
-        lithology = xr.open_dataset("lithology.nc", cache=False, engine="h5netcdf")["lithology"]
-        strain = xr.open_dataset("strain.nc", cache=False, engine="h5netcdf")["strain"]
-        temperature = xr.open_dataset("temperature.nc", cache=False, engine="h5netcdf")["temperature"]
-        density = xr.open_dataset("density.nc", cache=False, engine="h5netcdf")["density"] #used to remove the values in the air
-        if(plot_melt):
-            incremental_melt = xr.open_dataset("dPhi.nc", cache=False, engine="h5netcdf")["dPhi"]
-            melt = xr.open_dataset("Phi.nc", cache=False, engine="h5netcdf")["Phi"]
+        if('lithology' in properties):
+            lithology = xr.open_dataset("lithology.nc", cache=False, engine="h5netcdf")["lithology"]
+            strain = xr.open_dataset("strain.nc", cache=False, engine="h5netcdf")["strain"]
+            temperature = xr.open_dataset("temperature.nc", cache=False, engine="h5netcdf")["temperature"]
+            density = xr.open_dataset("density.nc", cache=False, engine="h5netcdf")["density"] #used to remove the values in the air
+            if(plot_melt):
+                incremental_melt = xr.open_dataset("dPhi.nc", cache=False, engine="h5netcdf")["dPhi"]
+                melt = xr.open_dataset("Phi.nc", cache=False, engine="h5netcdf")["Phi"]
+
+        if(len(other_properties) > 0):
+            dataset = read_tapioca_datasets(model_path, variables, cache=False, engine="h5netcdf")
 
         for i in range(chunk_start, min(chunk_start + chunk_size, end)):
             steps_model = steps[i] #dataset.steps.values[i]
-            fig, axs = plt.subplots(1, 1, figsize=(12, 3), constrained_layout=True)
-
-            # lithology, strain, temperature = worker(i)
-
             current_time = float(times[i])
-            
-            xlims = [0, Lx/1000]
-            ylims = [-Lz/1000+40, 0+40]
-            # xlims = [1600, 2200]
-            # ylims = [-150, 40]
-            axs.text(0.01, 1.035, f'{model_name}', bbox=dict(facecolor='white', edgecolor='white', alpha=0.0), fontsize = 14, zorder=52, transform=axs.transAxes)
-            axs.text(0.5, 1.035, f'Time = {current_time:.2f} Myr', bbox=dict(facecolor='white', edgecolor='white', alpha=0.0), fontsize = 14, zorder=52, transform=axs.transAxes)
-            
-            air = density.isel(time=i).values < 1200.0 #tapioca keeps the values in the air: set them to zero there
 
-            axs.imshow(lithology.isel(time=i).values[::-1, :], aspect='auto', extent=(0, Lx/1000, -Lz/1000+40, 40), cmap=cmap, vmin=-0.5, vmax=len(colors)-0.5, alpha=1.0)
+            if(len(other_properties) > 0):
+                dataset_i = dataset.isel(time=i).load()
 
-            # strain  = strain_dataset.strain.values[i][::-1,:]
-            # temperature = temperature_dataset.temperature.values[i][::-1,:]   
+            for prop in properties:
+                fig, axs = plt.subplots(1, 1, figsize=(12, 3), constrained_layout=True)
 
-            # axs.imshow(np.log10(strain), extent=(0, Lx/1000, -Lz/1000+40, 40), cmap="Greys", vmin=-0.5, vmax=0.9, alpha=0.2)
-            axs.imshow(np.log10(np.where(air, 0.0, strain.isel(time=i).values)[::-1, :]), extent=(0, Lx/1000, -Lz/1000+40, 40), cmap="Greys", vmin=-0.5, vmax=0.9, alpha=0.2, aspect='auto')
-            axs.contour(x, z+40, temperature.isel(time=i).values, levels=[500, 600, 700, 800, 900, 1300], colors='r', linewidths=1.0)
-            axs.set_ylim(ylims)
-            axs.set_xlim(xlims)
+                axs.text(0.01, 1.035, f'{model_name}', bbox=dict(facecolor='white', edgecolor='white', alpha=0.0), fontsize = 14, zorder=52, transform=axs.transAxes)
+                axs.text(0.5, 1.035, f'Time = {current_time:.2f} Myr', bbox=dict(facecolor='white', edgecolor='white', alpha=0.0), fontsize = 14, zorder=52, transform=axs.transAxes)
 
-            #lithology/strain legend with fixed size [inches], whatever the size of the figure
-            bv1 = plot_lithology_legend(axs, colors=[color_uc, color_lc, color_lit, color_ast], vmin=-0.5, vmax=0.9, alpha=0.2,
-                                        position=(0.97, 0.25), loc='lower right')
+                if(prop == 'lithology'):
+                    plot_lithology_frame(axs, i)
+                else:
+                    plot_property(dataset_i, prop, xlims, ylims_surface if prop == 'surface' else ylims, model_path, fig, axs,
+                                  print_time=False,
+                                  plot_isotherms=plot_isotherms, isotherms=isotherms,
+                                  topo_from_density=topo_from_density,
+                                  plot_colorbar=plot_colorbar,
+                                  plot_melt=plot_melt,
+                                  lithology_colors=lithology_colors)
 
-            # Setting plot details
-            fsize = 14
-            axs.set_xlabel('Distance [km]', fontsize=fsize)
-            axs.set_ylabel('Depth [km]', fontsize=fsize)
-            axs.tick_params(axis='both', labelsize=fsize)
+                # Setting plot details
+                fsize = 14
+                axs.set_xlabel('Distance [km]', fontsize=fsize)
+                axs.set_ylabel('Topography [km]' if prop == 'surface' else 'Depth [km]', fontsize=fsize)
+                axs.tick_params(axis='both', labelsize=fsize)
 
+                figname = f"{frame_prefix(prop)}_{str(int(steps_model)).zfill(6)}.{fig_format}"
+
+                proc = psutil.Process(os.getpid())
+                # print(f"before - worker ID:{os.getpid()}; Memory Usage: {proc.memory_info().rss/1024**3:.2f} GB")
+                fig.savefig(f"_output/{figname}", dpi=300)
+                # print(f"after - worker ID:{os.getpid()}; Memory Usage: {proc.memory_info().rss/1024**3:.2f} GB")
+                plt.close(fig)
+
+                del fig
+                del axs
+                gc.collect()
+
+        if('lithology' in properties):
+            del lithology
+            del strain
+            del temperature
+            del density
             if(plot_melt):
-                # incremental_melt = xr.open_dataset('_incremental_melt.nc', cache=False, engine="h5netcdf")['dPhi'].isel(time=i).values[::,:] #dPhi_dataset.isel(time=i).to_numpy()[::,:]
-                # melt = xr.open_dataset('_melt.nc', cache=False, engine="h5netcdf")['Phi'].isel(time=i).values[::,:] #Phi_dataset.isel(time=i).to_numpy()[::,:]
-                incremental_melt_i = np.where(air, 0.0, incremental_melt.isel(time=i).values)[::,:]
-                melt_i = np.where(air, 0.0, melt.isel(time=i).values)[::,:]
-                #Plotting incremental melt
-                color_incremental_melt = 'xkcd:bright pink'
-                color_depleted_mantle='xkcd:purple'
-
-                meltmin, meltmax = melt_i.min(), melt_i.max()
-                dmeltmin, dmeltmax = incremental_melt_i.min(), incremental_melt_i.max()
-                incremental_melt_i[incremental_melt_i == 0] = np.nan # Set zero values to NaN to avoid plotting them
-                melt_i[melt_i == 0] = np.nan # Set zero values to NaN to avoid plotting them
-
-                axs.contourf(xx, zz+40, incremental_melt_i, colors=color_incremental_melt, alpha=0.4, zorder=30)
-                axs.contourf(xx, zz+40, melt_i, colors=color_depleted_mantle, alpha=0.4, zorder=20)
-                #plotting melt legend
-                text_fsize = 12
-                axs.text(0.10, 1.035, r'Melt Fraction $\left(\frac{\partial \phi}{\partial t}\right)$', color='xkcd:bright pink', fontsize=text_fsize, transform=axs.transAxes, zorder=60)
-                axs.text(0.25, 1.035, r'Depleted Mantle ($\phi$)', color='xkcd:bright purple', fontsize=text_fsize, transform=axs.transAxes, zorder=60)
-
-                figname = f"{model_name}_lithology_MeltFrac_{str(int(steps_model)).zfill(6)}.{fig_format}"
-            else:
-                figname = f"{model_name}_lithology_{str(int(steps_model)).zfill(6)}.{fig_format}"
-
-            proc = psutil.Process(os.getpid())
-            # print(f"before - worker ID:{os.getpid()}; Memory Usage: {proc.memory_info().rss/1024**3:.2f} GB")
-            fig.savefig(f"_output/{figname}", dpi=300)
-            # print(f"after - worker ID:{os.getpid()}; Memory Usage: {proc.memory_info().rss/1024**3:.2f} GB")
-            # print('saved')
-            # print(f'callbacks: {fig.canvas.callbacks.callbacks}')
-            plt.close(fig)
-
-            del fig
-            del axs
-            del bv1
-            gc.collect()
-
-        del lithology
-        del strain
-        del temperature
-        del density
-        if(plot_melt):
-            del incremental_melt
-            del melt
+                del incremental_melt
+                del melt
+        if(len(other_properties) > 0):
+            del dataset
         gc.collect()
 
         # objs = gc.get_objects()
@@ -362,10 +399,7 @@ if(make_videos):
 
     fps = 24
     for prop in properties:
-        videoname = f'{model_path}/_output/{model_name}_lithology'
-
-        if(plot_melt):
-            videoname = f'{videoname}_MeltFrac'
+        videoname = f'{model_path}/_output/{frame_prefix(prop)}'
 
         if(plot_particles):
             if(prop == 'viscosity'):
@@ -381,7 +415,7 @@ if(make_videos):
         except:
             print(f"\tNo {prop} video to remove.")
 
-        comand = f"ffmpeg -r {fps} -f image2 -s 1920x1080 -pattern_type glob -i \"{videoname}_*.{fig_format}\" -vcodec libx264 -vf 'pad=ceil(iw/2)*2:ceil(ih/2)*2' -r 24 -y -an -crf 25 -pix_fmt yuv420p {videoname}.mp4"
+        comand = f"ffmpeg -r {fps} -f image2 -s 1920x1080 -pattern_type glob -i \"{videoname}_[0-9]*.{fig_format}\" -vcodec libx264 -vf 'pad=ceil(iw/2)*2:ceil(ih/2)*2' -r 24 -y -an -crf 25 -pix_fmt yuv420p {videoname}.mp4"
         result = subprocess.run(comand, shell=True, check=True, capture_output=True, text=True)
     print("\tDone!")
 
@@ -420,10 +454,7 @@ if(make_videos):
 if(make_gifs):
     print("Converting videos to gifs...")
     for prop in properties:
-        gifname = f'{model_path}/_output/{model_name}_lithology'
-
-        if(plot_melt):
-            gifname = f'{gifname}_MeltFrac'
+        gifname = f'{model_path}/_output/{frame_prefix(prop)}'
 
         if(plot_particles):
             if(prop == 'viscosity'):

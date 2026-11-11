@@ -51,12 +51,15 @@ Frames: `_output/<model>_<plot_type>_<property>_and_PTt_<step>.png`.
 Accordion, rifting and double keel models (used by the [pipeline](pipeline.md) for the video). Each frame has the lithology, the strain, the isotherms and, with `plot_melt`, the
 melt.
 
-Input files: `strain.nc`, `lithology.nc`, `temperature.nc`, `density.nc` (and `Phi.nc`, `dPhi.nc`).
+Input files: `strain.nc`, `lithology.nc`, `temperature.nc`, `density.nc` (and `Phi.nc`, `dPhi.nc`; `surface.nc` for the properties other than the lithology).
 
 | Variable | Meaning |
 | --- | --- |
 | `lithology_colors` | `'auto'` (any number of layers, see `get_lithology_colors`), `'double_keel'`, `'rifting'`, `'accordion'`, `'svg_accordion'` or a list with one color per layer code. |
+| `properties` | Properties to plot (default `['lithology']`). `'lithology'` is plotted by the script; the others (`'density'`, `'radiogenic_heat'`, `'pressure'`, `'strain'`, `'strain_rate'`, `'temperature'`, `'temperature_anomaly'`, `'surface'`, `'viscosity'`) with `plot_property`, from `<property>.nc` (`heat.nc` for `radiogenic_heat`). One set of frames, video and gif per property. |
+| `plot_isotherms` | Isotherms (`isotherms`). |
+| `topo_from_density` | Air/crust interface of the properties plotted with `plot_property`: `False` (default) from `surface.nc` (from `density.nc` if there is no `surface.nc`), `True` from `density.nc`. |
 | `plot_melt` | Melt and incremental melt. |
 | `fig_format` | Format of the frames (`jpeg`). |
 
-Frames: `_output/<model>_lithology_<step>.jpeg`.
+Frames: `_output/<model>_<property>[_MeltFrac]_<step>.jpeg`.
