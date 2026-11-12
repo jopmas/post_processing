@@ -1,10 +1,13 @@
 # %% [markdown]
 # # Synthetic seismic section of a rifted margin from a Mandyoc scenario (multithreaded)
 #
-# Same pipeline, results and figures as `seismic_section.py`, but the
-# tremelique time step is split between the cores of the computer
-# (`functions/tremelique_parallel.py`), which makes the zoom ~6 times faster
-# with 12 cores. See the section "Multithreaded tremelique" below.
+# Same pipeline and figures as `seismic_section.py`, but the waves of the
+# zoom are propagated with Devito by default (`PROPAGATOR = "devito"`: 8th
+# order in space, compiled with OpenMP), or with tremelique with its time step
+# split between the cores of the computer (`PROPAGATOR = "tremelique"`,
+# `functions/tremelique_parallel.py`, ~6 times faster than serial with 12
+# cores). See the sections "Multithreaded tremelique" and "Choice of the
+# propagator" below.
 #
 # Works with scenarios with and without sediments, extracted (basaltic)
 # magma and a water layer: the role of each Mandyoc layer (mantle, crust,
@@ -214,6 +217,10 @@ ZOOM_TAG = f"{XZ0 / 1e3:.0f}-{XZ1 / 1e3:.0f}km"  # in the names of the saved fig
 ZZMAX = 36e3  # [m]
 DXZ = 20.0  # [m]
 PAD = 60  # absorbing padding [cells]
+# Wave propagation of the zoom: "tremelique" (4th order in space, multithreaded
+# with numba) or "devito" (Devito, 8th order in space, compiled with OpenMP;
+# needs `pip install devito`). See "Choice of the propagator" in section 5.
+PROPAGATOR = "devito"
 
 
 # %% [markdown]
@@ -850,6 +857,24 @@ save(fig, "convolutional_windows")
 # for other uses of tremelique. `ZeroOffset` below derives from it. The
 # number of threads is numba's (all the cores by default; change it with
 # `numba.set_num_threads` or the `NUMBA_NUM_THREADS` environment variable).
+#
+# ### Choice of the propagator
+#
+# With `PROPAGATOR = "devito"` (the default, used in the manuscript) the two
+# simulations are run with Devito
+# (Louboutin et al., 2019; `functions/devito_propagator.py`), a widely used
+# finite-difference compiler for seismic modelling and imaging. It solves the
+# same variable-density acoustic equation with the same sources, receivers
+# and water absorption, but with 8th-order spatial derivatives (less
+# numerical dispersion than tremelique's 4th order) and a damping term
+# `sigma du/dt` with a quadratic profile in the padding zone as absorbing
+# boundary, instead of tremelique's multiplicative taper. The C code is
+# generated and compiled with OpenMP on the first run (the number of threads
+# is `OMP_NUM_THREADS`, all the cores by default). On a test model the two
+# propagators give the same traces (correlation 0.9995) and Devito leaves
+# less energy reflected by the boundaries; on a 80 km × 25 km zoom it is ~3
+# times faster. The outputs of Devito have
+# `_devito` in their names, so they do not overwrite those of tremelique.
 
 
 # %%
@@ -893,6 +918,16 @@ class ZeroOffset(ParallelAcoustic):
             u[tp1, self.rec_z, self.rec_x] += self.injection[iteration]
 
 
+if PROPAGATOR == "devito":
+    from functions.devito_propagator import DevitoZeroOffset as Propagator  # noqa: E402
+elif PROPAGATOR == "tremelique":
+    Propagator = ZeroOffset
+else:
+    raise ValueError(f"unknown PROPAGATOR {PROPAGATOR!r}: use 'tremelique' or 'devito'")
+if PROPAGATOR != "tremelique":
+    ZOOM_TAG += f"_{PROPAGATOR}"  # in the names of the outputs of the zoom
+
+
 def pad(a, mode="edge"):
     return np.pad(a, ((0, PAD), (PAD, PAD)), mode=mode)
 
@@ -925,7 +960,7 @@ record = ZOOM_T0 + ZOOM_TLEN - two_way_time(zoom)[rec_row, np.arange(xz.size)].m
 
 def exploding_reflector():
     """Zero-offset data at the receivers (the slow part). Returns data, dt."""
-    sim = ZeroOffset(pad(vp_fd / 2), pad(rho_fd), DXZ, receivers, absorb, F_CUT,
+    sim = Propagator(pad(vp_fd / 2), pad(rho_fd), DXZ, receivers, absorb, F_CUT,
                      padding=PAD)  # fmt: skip
     sim.source_scale = (-sim.density * (sim.velocity * sim.dt) ** 2
                         * pad(source, "constant")).astype(np.float32)  # fmt: skip
@@ -961,7 +996,7 @@ def reverse_time_migration(data, dt):
     """Depth image from the zero-offset data (the other slow part)."""
     smooth_vp = gaussian_filter(pad(vp_fd / 2), 250 / DXZ).astype(np.float32)
     smooth_rho = gaussian_filter(pad(rho_fd), 250 / DXZ).astype(np.float32)
-    rtm = ZeroOffset(smooth_vp, smooth_rho, DXZ, receivers, absorb, F_CUT, padding=PAD,
+    rtm = Propagator(smooth_vp, smooth_rho, DXZ, receivers, absorb, F_CUT, padding=PAD,
                      dt=dt)  # fmt: skip
     n_delay = int(round(delay / dt))
     scale = -smooth_rho[receivers] * (smooth_vp[receivers] * dt) ** 2
@@ -997,6 +1032,8 @@ PARAMETERS = json.dumps(dict(
     RHO_VP=RHO_VP, HURST=HURST, FAULTS=FAULTS, BRITTLE_T=BRITTLE_T, NOISE=NOISE,
     XZ0=XZ0, XZ1=XZ1, ZZMAX=ZZMAX, DXZ=DXZ, PAD=PAD, ZOOM_T0=ZOOM_T0,
     ZOOM_TLEN=ZOOM_TLEN,
+    # only with Devito, so the caches of tremelique made before stay valid
+    **({} if PROPAGATOR == "tremelique" else {"PROPAGATOR": PROPAGATOR}),
 ), sort_keys=True)  # fmt: skip
 
 cached = None
@@ -1108,9 +1145,9 @@ def plot_lithology(ax):
 fig, axes = plt.subplots(4, 1, figsize=(12, 18.5), layout="constrained")
 plot_lithology(axes[0])
 plot_seismic(unmigrated, tz, xz, axes[1],
-             f"tremelique exploding reflector, unmigrated (peak {F_CUT / 3:.0f} Hz), AGC",
+             f"{PROPAGATOR} exploding reflector, unmigrated (peak {F_CUT / 3:.0f} Hz), AGC",
              tlim=tlim)  # fmt: skip
-plot_seismic(migrated, tz, xz, axes[2], "tremelique RTM (migrated), AGC", tlim=tlim)
+plot_seismic(migrated, tz, xz, axes[2], f"{PROPAGATOR} RTM (migrated), AGC", tlim=tlim)
 plot_seismic(conv[:, in_zoom], t, x[in_zoom], axes[3],
              f"Convolutional ({CONV_FPEAK:.0f} Hz), AGC", tlim=tlim)  # fmt: skip
 save(fig, f"zoom_{ZOOM_TAG}_sections")
@@ -1147,7 +1184,7 @@ im = axes[0].imshow(vp_time[keep] / 1e3,
 fig.colorbar(im, ax=axes[0], pad=0.01, label="Vp [km/s]")
 axes[0].set_title("Vp (zoom)")
 axes[0].set_ylabel("TWT [s]")
-plot_seismic(migrated, tz, xz, axes[1], "tremelique RTM (migrated), AGC", tlim=tlim)
+plot_seismic(migrated, tz, xz, axes[1], f"{PROPAGATOR} RTM (migrated), AGC", tlim=tlim)
 plot_seismic(conv[:, in_zoom], t, x[in_zoom], axes[2],
              f"Convolutional ({CONV_FPEAK:.0f} Hz), AGC", tlim=tlim)  # fmt: skip
 for xc in (XZ0, XZ1):  # link the zoom window to the zoom panels

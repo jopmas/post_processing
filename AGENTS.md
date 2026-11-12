@@ -24,6 +24,10 @@ Scripts and notebooks to post-process Mandyoc models from the NetCDF files creat
   checking that the main `.nc` files exist; the zip is kept), `plot_snapshots.py` and `frames_generator.py`.
 - `Geometries.ipynb`: a field at chosen instants (plotted with `plot_property`), crustal thickness and width of the
   rifted margins. It has no functions of its own: they are in `functions/mandyocIO.py`.
+- `seismic_section.py`, `seismic_section_parallel.py` (and their notebooks): synthetic seismic sections (see
+  `docs/source/user_guide/seismic_section.md`). In the parallel version `PROPAGATOR` chooses the wave propagation
+  of the zoom: `functions/tremelique_parallel.py` (tremelique, multithreaded with numba) or
+  `functions/devito_propagator.py` (Devito, `DevitoZeroOffset`, same interface as `ZeroOffset`).
 - `functions/mandyocIO.py`: functions shared by the scripts and the notebook: lithology colors
   (`LITHOLOGY_COLORS`), readers of the tapioca files (`read_tapioca_datasets`, `read_params`, `read_times_steps`,
   `read_lithology`), crust measurements (`measure_crust_from_lithology`, `measure_crustal_thickness`,

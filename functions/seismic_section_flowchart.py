@@ -11,7 +11,7 @@ COLORS = {
     "input": "#dbe9f6",  # Mandyoc / tapioca files
     "model": "#dcefd9",  # model building
     "conv": "#fde5cc",  # convolutional section
-    "fd": "#e6dcf0",  # tremelique
+    "fd": "#e6dcf0",  # finite differences
     "cache": "#f2f2f2",  # cache of the zoom
     "output": "#eeeeee",  # display and outputs
 }
@@ -39,7 +39,7 @@ def _arrow(ax, start, end, label=None, label_offset=(0.12, 0)):
                 style="italic", color="0.25", va="center")  # fmt: skip
 
 
-def plot_flowchart(ax=None, parallel=False):
+def plot_flowchart(ax=None, parallel=False, propagator=None):
     """
     Plot the flowchart of the synthetic seismic section.
 
@@ -48,15 +48,21 @@ def plot_flowchart(ax=None, parallel=False):
     ax: `~matplotlib.axes.Axes`, optional
         Axis to draw on; a new figure is created if None.
     parallel: bool
-        Flowchart of seismic_section_parallel.py (multithreaded tremelique and
-        its own file of results) instead of seismic_section.py.
+        Flowchart of seismic_section_parallel.py (Devito or multithreaded
+        tremelique, and its own file of results) instead of seismic_section.py.
+    propagator: str, optional
+        Only with ``parallel``: ``"devito"`` or ``"tremelique"`` to show only
+        that propagator; by default both (the ``PROPAGATOR`` setting).
 
     Returns
     -------
     ax: `~matplotlib.axes.Axes`
     """
     prefix = "seismic_section_parallel" if parallel else "seismic_section"
-    solver = "ParallelAcoustic (multithreaded)" if parallel else "tremelique Acoustic"
+    solvers = {"devito": "Devito, 8th order (OpenMP)",
+               "tremelique": "ParallelAcoustic (multithreaded)",
+               None: "Devito or tremelique (PROPAGATOR)"}  # fmt: skip
+    solver = solvers[propagator] if parallel else "tremelique Acoustic"
     if ax is None:
         _, ax = plt.subplots(figsize=(11, 15), layout="constrained")
     ax.set_xlim(0, 12)
@@ -91,7 +97,7 @@ def plot_flowchart(ax=None, parallel=False):
          "∗ Ricker 25 Hz, + noise, top mute", "conv")  # fmt: skip
     _arrow(ax, (4.2, 9.1), (2.55, 7.6))
 
-    # tremelique branch (right)
+    # Finite-difference branch (right)
     _box(ax, 8.75, 7.3, 6.1, 1.0, "5. Zoom model (XZ0–XZ1, DXZ)", "", "fd")
     ax.text(8.75, 7.08, "fast impedance-matched water, receivers on the seafloor",
             ha="center", va="center", fontsize=8)  # fmt: skip

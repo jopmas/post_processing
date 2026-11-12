@@ -100,6 +100,7 @@ Both notebooks start with a flowchart of these steps, drawn by `plot_flowchart` 
 | `CANDIDATES` | Windows `(x start, x end, TWT start)` of the 4 s zooms of the convolutional section; a TWT start of `None` starts just above the seafloor. |
 | `XZ0`, `XZ1`, `ZZMAX`, `DXZ` | Window, maximum depth and grid spacing of the tremelique zoom [m]. |
 | `ZOOM_T0`, `ZOOM_TLEN` | TWT window of the zoom figures [s]; `ZOOM_T0 = None` starts just above the seafloor. |
+| `PROPAGATOR` | Wave propagation of the zoom (only in `seismic_section_parallel`): `"devito"` (default) or `"tremelique"`. |
 
 The run time is in the two tremelique simulations of the zoom: it grows with the size of the zoom and with
 `1/DXZ³` (minutes for 70 km × 32 km, about 40 min for 150 km × 36 km with `DXZ = 20` m).
@@ -166,6 +167,33 @@ sim = ParallelAcoustic(velocity, density, spacing)
 sim.add_point_source((0, nx // 2), tremelique.RickerWavelet(1, 30))
 sim.run(1000)
 ```
+
+## Choice of the propagator (Devito)
+
+In `seismic_section_parallel.py` and `seismic_section_parallel.ipynb`, `PROPAGATOR = "devito"` (the default)
+runs the two simulations of the zoom with [Devito](https://www.devitoproject.org) (Louboutin et al., 2019) instead of
+tremelique (`PROPAGATOR = "tremelique"`).
+Devito is a finite-difference compiler widely used for seismic modelling and imaging: it writes and compiles C code
+for the stencil, with OpenMP threads. `functions/devito_propagator.py` has `DevitoZeroOffset`, with the same
+interface as the `ZeroOffset` class of the scripts: the same variable-density acoustic equation, exploding-reflector
+source, receivers on the seafloor, water absorption and RTM. The differences are
+
+- 8th-order spatial derivatives (staggered for the density term) instead of 4th order, so less numerical
+  dispersion;
+- absorbing boundaries: a damping term `sigma du/dt`, quadratic in the padding zone (left, right and bottom), with
+  `sigma` set for a reflection of 1e-4 at normal incidence, instead of tremelique's multiplicative taper;
+- a larger stable time step (fewer steps for the same record).
+
+On a test model with a dipping reflector the traces of the two propagators have a correlation of 0.9995. With a
+point source near the edges of a homogeneous model, the energy left inside the model after the waves have left is
+−35 dB of the initial energy with Devito and −31 dB with tremelique. On a zoom of 80 km × 25 km (`DXZ = 20` m) the
+two simulations take 0.7 min with Devito and 2.3 min with tremelique (12 cores).
+
+Install it in the `tapioca` environment with `pip install devito`. On macOS, Apple's clang does not find OpenMP by
+itself: `functions/devito_propagator.py` sets `CFLAGS` and `LDFLAGS` to the `include` and `lib` folders of the
+environment (conda's `llvm-openmp`) when they are not set. The code is compiled on the first run and cached. The
+outputs of Devito have `_devito` in their names (e.g. `seismic_section_parallel_zoom_750-900km_devito.nc`), so they
+do not overwrite those of tremelique; the caches of tremelique made before stay valid.
 
 ## Limitations
 

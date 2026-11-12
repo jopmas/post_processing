@@ -19,10 +19,11 @@ The scripts read **only** the `.nc` files created by the Julia scripts of tapIOc
 | `frames_generator.py` | Frames and video of the lithology, strain, isotherms and melt (accordion, rifting and double keel models). |
 | `Geometries.ipynb` | Lithology (or other field) at chosen instants, crustal thickness and width of the margins. |
 | `seismic_section.py`, `seismic_section.ipynb` | Synthetic seismic section of a rifted margin (convolutional and [tremelique](https://www.fatiando.org/tremelique) with RTM), with or without sediments, extracted basalt and water. |
-| `seismic_section_parallel.py`, `seismic_section_parallel.ipynb` | The same section with the tremelique time step split between the cores (~6x faster, identical results). |
+| `seismic_section_parallel.py`, `seismic_section_parallel.ipynb` | The same section with the zoom propagated with [Devito](https://www.devitoproject.org) (default, `PROPAGATOR`) or with the tremelique time step split between the cores (~6x faster, identical results). |
 | `plot_snapshots.py` | Snapshots of the scenario (beginning, middle and end) to see its general evolution. |
 | `pipeline.sh` | From the zip of a scenario: extraction, `.nc` files, cleaning, snapshots and video. |
 | `functions/mandyocIO.py` | Plotting functions used by the scripts (lithology legend, colorbars, P-T-t paths, `plot_property`). |
+| `functions/devito_propagator.py` | `DevitoZeroOffset`: exploding reflector and RTM with Devito (8th order, OpenMP), same interface as the `ZeroOffset` of the scripts. |
 | `functions/tremelique_parallel.py` | Multithreaded kernels of tremelique and `ParallelAcoustic`, a drop-in replacement for `tremelique.Acoustic`. |
 
 ## How to install
