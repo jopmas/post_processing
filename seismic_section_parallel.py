@@ -6,15 +6,17 @@
 # (`functions/tremelique_parallel.py`), which makes the zoom ~6 times faster
 # with 12 cores. See the section "Multithreaded tremelique" below.
 #
-# Basement and below only (no sediments). Pipeline:
+# Works with scenarios with and without sediments, extracted (basaltic)
+# magma and a water layer: the role of each Mandyoc layer (mantle, crust,
+# basalt, sediments, water, air) is found from the scenario files. Pipeline:
 #
 # 1. Load lithology, temperature, strain and surface from the Mandyoc NetCDF
-#    outputs, with depths referenced to sea level (the top ``AIR`` metres of
-#    the box are sticky air).
+#    outputs, with depths referenced to sea level.
 # 2. Resample to a fine grid: smooth interface geometry with sharp contacts,
 #    and water above the seafloor.
 # 3. Density ``rho0 * (1 - alpha * T)`` and Vp per lithology with a
-#    temperature correction, plus
+#    temperature correction; sediments with compaction and one impedance per
+#    deposited layer; plus
 #    * serpentinization of the shallow, cold exhumed mantle;
 #    * small-scale heterogeneity inside each layer (von Kármán random media;
 #      laminated in the lower crust), which does not change the geometry;
@@ -41,14 +43,29 @@ import numpy as np
 import scipy.fft
 import xarray as xr
 from scipy.interpolate import RegularGridInterpolator
-from scipy.ndimage import gaussian_filter, gaussian_laplace, uniform_filter1d
+from scipy.ndimage import (
+    distance_transform_edt,
+    gaussian_filter,
+    gaussian_laplace,
+    uniform_filter1d,
+)
 from scipy.signal import oaconvolve
 
 import tremelique as tr
 
 # post_processing folder, with functions/mandyocIO.py (lithology colours of the videos)
 sys.path.append(str(Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()))
-from functions.mandyocIO import COLOR_WATER, get_lithology_colors  # noqa: E402
+from functions.mandyocIO import (  # noqa: E402
+    COLOR_AST,
+    COLOR_BAS,
+    COLOR_LC,
+    COLOR_LIT,
+    COLOR_SED,
+    COLOR_UC,
+    COLOR_WATER,
+    _read_layers_from_infos,
+    get_lithology_colors,
+)
 from functions.seismic_section_flowchart import plot_flowchart  # noqa: E402
 from functions.tremelique_parallel import (  # noqa: E402
     ParallelAcoustic,
@@ -98,9 +115,15 @@ plot_flowchart(parallel=True)
 #   grows with the 3rd power of 1/dx (2 spatial dimensions + time step), so
 #   20 m is a compromise between frequency and run time (see section 5).
 # * **Vp per lithology**: typical values for continental crust and mantle
-#   (e.g. Christensen & Mooney, 1995), corrected by temperature with
-#   `DVPDT` = −0.4 m/s/K, a typical laboratory value for crustal and mantle
-#   rocks.
+#   (e.g. Christensen & Mooney, 1995) and for basalt, corrected by
+#   temperature with `DVPDT` = −0.4 m/s/K, a typical laboratory value for
+#   crustal and mantle rocks.
+# * **Layer roles (`LAYER_ROLES`)** and **sea level (`SEA_LEVEL`)**: found
+#   automatically from the scenario files (see sections 1 and 2–3); they can
+#   also be given by hand.
+# * **Sediments (`SEDIMENTS`)**: Mandyoc gives them a constant density; for
+#   seismic their porosity decreases with burial (Athy's law), so their
+#   velocity increases from ~2.2 km/s at the seafloor to ~4.5 km/s at depth.
 
 # %%
 DATA = Path.cwd()  # run from the scenario folder, like the other post_processing scripts
@@ -117,17 +140,32 @@ ALPHA = 3.28e-5  # thermal expansion coefficient (param.txt) [1/K]
 DVPDT = -0.4  # temperature derivative of Vp [m/s/K]
 RHO_WATER, VP_WATER = 1030.0, 1500.0
 
-# Lithology codes follow the column order of interfaces.txt
-LITHOLOGIES = {
-    0: dict(name="asthenosphere", vp0=8450.0),
-    1: dict(name="lithospheric mantle", vp0=8450.0),
-    2: dict(name="lithospheric mantle (weak)", vp0=8450.0),
-    3: dict(name="lithospheric mantle", vp0=8450.0),
-    4: dict(name="lower crust", vp0=7000.0),
-    5: dict(name="upper crust", vp0=6250.0),
+# Role of each Mandyoc layer code (order of interfaces.txt, 0 = bottom
+# layer). "auto": from the names of the layers in infos_*.txt or, without it,
+# from the densities in interfaces.txt and the sediment codes in SP_vc.txt
+# (see layer_roles). Or a dict {role: [codes]} with the roles of ROLES.
+LAYER_ROLES = "auto"
+# Sea level: "auto" is the top of the water layer at TIME if the scenario has
+# one, otherwise Mandyoc's sea_level (param.txt) above the mean initial
+# surface. Or a z [m] in Mandyoc coordinates.
+SEA_LEVEL = "auto"
+
+# P-wave velocity at 0 °C of the crystalline rocks [m/s]
+VP0 = {
+    "asthenosphere": 8450.0,
+    "lithospheric mantle": 8450.0,
+    "lower crust": 7000.0,
+    "upper crust": 6250.0,
+    "basalt": 6500.0,  # extracted magma (oceanic crust)
 }
-MANTLE = [0, 1, 2, 3]
-WATER = 7  # code given to the water layer
+# Sediments: porosity phi = phi0 exp(-h / decay) (Athy's law), h = depth
+# below the seafloor; Vp from Wyllie's time average of water and matrix,
+# density from the porosity. Each deposited layer (one Mandyoc code per time
+# interval, SP_vc.txt) gets its own matrix velocity and surface porosity,
+# drawn around the mean values with layer_std and phi0_std: these contrasts
+# make the layered reflections.
+SEDIMENTS = dict(phi0=0.55, decay=2500.0, vp_matrix=5000.0, rho_grain=2650.0,
+                 layer_std=0.06, phi0_std=0.08)  # fmt: skip
 
 # Serpentinization: mantle colder than SERP_TMAX, decreasing linearly from
 # fully serpentinized at the top of the basement to zero at SERP_DEPTH below it
@@ -140,9 +178,11 @@ VP_SERP, RHO_SERP = 4300.0, 2550.0
 # inside each layer: the geometry (thinning, exhumation) is unchanged.
 # Density follows with d(ln rho) = RHO_VP * d(ln Vp).
 HETEROGENEITY = [
-    dict(codes=[5], std=0.03, ax=1500.0, az=400.0),  # upper crust
-    dict(codes=[4], std=0.05, ax=4000.0, az=150.0),  # lower crust (laminated)
-    dict(codes=MANTLE, std=0.015, ax=1000.0, az=1000.0),  # mantle
+    dict(roles=["upper crust"], std=0.03, ax=1500.0, az=400.0),
+    dict(roles=["lower crust"], std=0.05, ax=4000.0, az=150.0),  # laminated
+    dict(roles=["asthenosphere", "lithospheric mantle"], std=0.015, ax=1000.0, az=1000.0),
+    dict(roles=["basalt"], std=0.05, ax=800.0, az=300.0),  # flows and dykes
+    dict(roles=["sediments"], std=0.02, ax=5000.0, az=50.0),  # within each layer
 ]
 SERP_HETEROGENEITY = dict(std=0.06, ax=400.0, az=400.0)
 RHO_VP = 0.25
@@ -152,7 +192,7 @@ HURST = 0.3
 # of std HIGHPASS), normalised; brittle where T < BRITTLE_T[0], fading out
 # at BRITTLE_T[1]
 FAULTS = dict(highpass=4000.0, damage=0.05, std=0.07, ax=3000.0, az=100.0,
-              dip_step=15.0)  # fmt: skip
+              dip_step=15.0, in_sediments=False)  # fmt: skip
 BRITTLE_T = (550.0, 700.0)  # [°C]
 
 # Convolutional section
@@ -160,12 +200,14 @@ CONV_DT = 0.002  # [s]
 CONV_FPEAK = 25.0  # Ricker peak frequency [Hz]
 NOISE = 0.05  # random noise, relative to the RMS of the section
 AGC_WINDOW = 0.25  # [s]
-# Candidate zoom windows (x start, x end, TWT start) [m, m, s], 4 s long
-CANDIDATES = [(800e3, 870e3, 3.0), (850e3, 920e3, 5.0), (900e3, 980e3, 6.3)]
+# Candidate zoom windows (x start, x end, TWT start) [m, m, s], 4 s long. A
+# TWT start of None starts the window just above the seafloor (10th
+# percentile of its TWT in the window, minus 0.3 s).
+CANDIDATES = [(800e3, 870e3, None), (850e3, 920e3, None), (900e3, 980e3, None)]
 
 # Zoom (finite differences)
 XZ0, XZ1 = 750e3, 900e3  # [m]
-ZOOM_T0, ZOOM_TLEN = 0.0, 10.0  # TWT window of the zoom display [s]
+ZOOM_T0, ZOOM_TLEN = 0.0, 10.0  # TWT window of the zoom display [s] (ZOOM_T0 None: auto)
 ZOOM_TAG = f"{XZ0 / 1e3:.0f}-{XZ1 / 1e3:.0f}km"  # in the names of the saved figures
 ZZMAX = 36e3  # [m]
 DXZ = 20.0  # [m]
@@ -180,10 +222,35 @@ PAD = 60  # absorbing padding [cells]
 #
 # **Depth reference.** Mandyoc's z axis starts at the top of the box, which
 # includes a layer of sticky air. Seismic sections are referenced to sea
-# level, so depths are shifted by the sticky-air thickness (`AIR`), taken as
-# the mean of the initial surface, which is where Mandyoc's `sea_level = 0`
-# lies. The seafloor comes from `surface.nc` (25 m sampling), which is much
-# smoother than the boundary of the air in the lithology grid.
+# level, so depths are measured from it (`AIR` is the depth of sea level
+# below the top of the box). With `SEA_LEVEL = "auto"`:
+#
+# * if the scenario has a water layer (e.g. with surface processes), sea
+#   level is the top of the water at `TIME`, since the whole model may move
+#   up or down during the run;
+# * otherwise it is Mandyoc's `sea_level` (`param.txt`) above the mean of the
+#   initial surface.
+#
+# The seafloor (top of the solid, sediments included) comes from
+# `surface.nc` (25 m sampling), which is much smoother than the boundary of
+# the air in the lithology grid. Land above sea level is cut off.
+#
+# **Layer roles.** The seismic properties depend on what each Mandyoc layer
+# is, which changes from scenario to scenario (number of mantle and crustal
+# layers, one sediment code per time interval, extracted basalt, water...).
+# `layer_roles` finds them, in this order of priority:
+#
+# 1. the names of the layers in `infos_*.txt` (written by tapioca), when
+#    the scenario has it;
+# 2. the sediment codes in `SP_vc.txt` (Mandyoc surface processes);
+# 3. the densities in `interfaces.txt`: < 500 kg/m³ air, < 1200 water,
+#    < 2550 sediments, ≥ 3200 mantle (code 0 is the asthenosphere),
+#    2750–3200 lower crust, or **basalt if it is above an upper-crust
+#    layer** (extracted magma sits on top of the crust), otherwise upper
+#    crust.
+#
+# The roles found are printed: check them, and give `LAYER_ROLES` by hand if
+# they are wrong.
 
 
 # %%
@@ -194,17 +261,90 @@ def load(name):
                   z=slice(-(AIR + ZMAX + 20e3), None)).load()  # fmt: skip
 
 
-surf_all = xr.open_dataset(DATA / "surface.nc").surface
-# Sea level: mean of the initial surface (Mandyoc sea_level = 0 is relative to it)
-AIR = -float(surf_all.isel(time=0).mean())
-surf = surf_all.sel(time=TIME, method="nearest").load()
-lith, temp, strain = load("lithology"), load("temperature"), load("strain")
-print(f"time = {float(lith.time):.2f} Myr, sticky air = {AIR / 1e3:.0f} km")
+ROLES = ["asthenosphere", "lithospheric mantle", "lower crust", "upper crust", "basalt",
+         "sediments", "water", "air"]  # fmt: skip
+CRYSTALLINE = ["asthenosphere", "lithospheric mantle", "lower crust", "upper crust", "basalt"]
+MANTLE = ["asthenosphere", "lithospheric mantle"]
+# Keywords of the layer names of infos_*.txt (first match wins)
+NAME_KEYWORDS = [
+    ("air", "air"), ("water", "water"), ("sediment", "sediments"), ("basin", "sediments"),
+    ("basalt", "basalt"), ("oceanic_crust", "basalt"), ("magma", "basalt"),
+    ("asthenosphere", "asthenosphere"), ("lithospher", "lithospheric mantle"),
+    ("craton", "lithospheric mantle"), ("lower_crust", "lower crust"),
+    ("upper_crust", "upper crust"), ("decol", "upper crust"),
+]  # fmt: skip
+
+
+def read_param(name, default):
+    """Value of a parameter of param.txt."""
+    for line in open(DATA / "param.txt"):
+        key, _, value = line.partition("=")
+        if key.strip() == name:
+            return value.split("#")[0].strip()
+    return default
+
+
+def layer_roles(rho, names, sediment_codes):
+    """Role (an item of ROLES) of each layer code, as {role: [codes]}."""
+    roles, above_upper_crust = {}, False
+    for code, density in enumerate(rho):
+        name = names[code] if code < len(names) else ""
+        role = next((r for key, r in NAME_KEYWORDS if key in name), None)
+        if role is None and code in sediment_codes:
+            role = "sediments"
+        if role is None:
+            if density < 500:
+                role = "air"
+            elif density < 1200:
+                role = "water"
+            elif density < 2550:
+                role = "sediments"
+            elif density >= 3200:
+                role = "asthenosphere" if code == 0 else "lithospheric mantle"
+            elif density >= 2750:
+                role = "basalt" if above_upper_crust else "lower crust"
+            else:
+                role = "upper crust"
+        above_upper_crust |= role == "upper crust"
+        roles.setdefault(role, []).append(code)
+    return roles
+
 
 with open(DATA / "interfaces.txt") as f:
     for line in f:
         if line.startswith("rho"):
             RHO0 = np.array(line.split()[1:], dtype=float)
+if LAYER_ROLES == "auto":
+    names = [name for name, _ in _read_layers_from_infos(str(DATA))]
+    sp_file = DATA / "SP_vc.txt"
+    sediment_codes = set(np.loadtxt(sp_file, ndmin=2)[:, 1].astype(int)) if sp_file.exists() else set()
+    LAYER_ROLES = layer_roles(RHO0, names, sediment_codes)
+CODE_ROLE = np.zeros(len(RHO0), dtype=np.int8)  # role index of each code
+for role, codes in LAYER_ROLES.items():
+    CODE_ROLE[codes] = ROLES.index(role)
+for role, codes in LAYER_ROLES.items():
+    shown = codes if len(codes) <= 6 else f"{codes[0]}–{codes[-1]} ({len(codes)} codes)"
+    print(f"{role:>20}: {shown}")
+
+surf_all = xr.open_dataset(DATA / "surface.nc").surface
+surf = surf_all.sel(time=TIME, method="nearest").load()
+water_codes = LAYER_ROLES.get("water", [])
+water_top = None
+if SEA_LEVEL == "auto" and water_codes:
+    full = xr.open_dataset(DATA / "lithology.nc").lithology.sel(time=TIME, method="nearest")
+    is_water = full.isin(water_codes)
+    if bool(is_water.any()):  # median over the columns of the top of the water
+        water_top = float(full.z.where(is_water).max("z").median())
+if SEA_LEVEL != "auto":
+    Z_SEA = float(SEA_LEVEL)
+elif water_top is not None:
+    Z_SEA = water_top
+else:
+    Z_SEA = float(surf_all.isel(time=0).mean()) + float(read_param("sea_level", 0.0))
+AIR = -Z_SEA  # depth of sea level below the top of the box
+lith, temp, strain = load("lithology"), load("temperature"), load("strain")
+print(f"time = {float(lith.time):.2f} Myr, sea level {AIR / 1e3:.1f} km below the top of the box"
+      + (" (top of the water layer)" if water_top is not None and SEA_LEVEL == "auto" else ""))
 
 # Figures are saved in the _output folder of the scenario
 OUTPUT = DATA / "_output"
@@ -228,13 +368,27 @@ def save(fig, name):
 
 
 # %%
-LITHO_COLORS = get_lithology_colors(str(DATA), "auto")  # one colour per Mandyoc code
+# Colours of the crust and mantle from the videos (colours of the scenario
+# when get_lithology_colors finds them), the standard ones otherwise
+try:
+    LITHO_COLORS = get_lithology_colors(str(DATA), "auto")  # one colour per Mandyoc code
+except ValueError:
+    LITHO_COLORS = []
+
+
+def role_color(role, default):
+    codes = LAYER_ROLES.get(role, [])
+    return LITHO_COLORS[codes[0]] if codes and len(LITHO_COLORS) == len(RHO0) else default
+
+
 UNITS = [  # (label, colour) of each display unit
     ("water", COLOR_WATER),
-    ("upper crust", LITHO_COLORS[5]),
-    ("lower crust", LITHO_COLORS[4]),
-    ("lithospheric mantle", LITHO_COLORS[1]),
-    ("asthenosphere", LITHO_COLORS[0]),
+    ("sediments", COLOR_SED),
+    ("basalt", COLOR_BAS),
+    ("upper crust", role_color("upper crust", COLOR_UC)),
+    ("lower crust", role_color("lower crust", COLOR_LC)),
+    ("lithospheric mantle", role_color("lithospheric mantle", COLOR_LIT)),
+    ("asthenosphere", role_color("asthenosphere", COLOR_AST)),
     ("serpentinized mantle", (95 / 255, 150 / 255, 105 / 255)),  # darker green
 ]
 UNITS_CMAP = plt.matplotlib.colors.ListedColormap([c for _, c in UNITS])
@@ -244,21 +398,33 @@ FAULTS_CMAP = plt.get_cmap("Purples")
 
 def lithology_units(m):
     """Display unit (index of UNITS) of every cell of a model."""
+    role = m["role"]
     return np.select(
-        [~m["rock"], m["serp"] >= 0.5, m["litho"] == 5, m["litho"] == 4, m["litho"] == 0],
-        [0, 5, 1, 2, 4],
-        default=3,
-    ).astype(np.int8)
+        [~m["rock"], m["serp"] >= 0.5] + [role == ROLES.index(r) for r in
+         ["sediments", "basalt", "upper crust", "lower crust", "asthenosphere"]],
+        [0, 7, 1, 2, 3, 4, 6],
+        default=5,
+    ).astype(np.int8)  # fmt: skip
 
 
-def plot_units(ax, units, faults, extent):
+def sediment_stripes(m):
+    """True in every other deposited sediment layer (to draw the layering)."""
+    return (m["role"] == ROLES.index("sediments")) & (m["sed_layer"] % 2 == 1)
+
+
+def plot_units(ax, units, faults, extent, stripes=None):
     """Lithology in the colours of the videos, with the faults shaded on top."""
     ax.imshow(units, extent=extent, aspect="auto", cmap=UNITS_CMAP, vmin=-0.5,
               vmax=len(UNITS) - 0.5, interpolation="nearest")  # fmt: skip
+    if stripes is not None and stripes.any():  # alternate shades of the sediment layers
+        ax.imshow(np.where(stripes, 1.0, np.nan), extent=extent, aspect="auto", cmap="Greys",
+                  vmin=0, vmax=8, interpolation="nearest", alpha=0.6)  # fmt: skip
     faults = np.nan_to_num(np.clip(faults, 0, 1))
     ax.imshow(faults, extent=extent, aspect="auto", cmap=FAULTS_CMAP, vmin=0, vmax=1,
               alpha=0.9 * faults, interpolation="nearest")  # fmt: skip
-    handles = [plt.matplotlib.patches.Patch(color=c, label=n) for n, c in UNITS]
+    present = set(np.unique(units[units >= 0]).tolist())
+    handles = [plt.matplotlib.patches.Patch(color=c, label=n)
+               for i, (n, c) in enumerate(UNITS) if i in present]  # fmt: skip
     handles.append(plt.matplotlib.patches.Patch(color=FAULTS_CMAP(0.8),
                                                 label="faults (localized strain)"))  # fmt: skip
     ax.legend(handles=handles, loc="lower right", fontsize=8, ncol=2)
@@ -271,21 +437,36 @@ def plot_units(ax, units, faults, extent):
 # `build_model` turns the Mandyoc fields into density and P-wave velocity on
 # a fine grid. Each step, and why:
 #
-# 1. **Lithology on the fine grid.** Each lithology is turned into an
-#    indicator (1 inside, 0 outside), interpolated, smoothed with a Gaussian
-#    (`SMOOTH` = 300 m) and the lithology with the largest value wins. This
-#    keeps contacts **sharp** (a sharp impedance contrast is what makes a
-#    reflection) but removes the staircase of the Mandyoc grid and the noise
-#    of the particles, which would otherwise create spurious diffractions.
-# 2. **Water** fills everything above the seafloor. There are no sediments:
-#    the scenario has no surface processes, and the aim here is the basement.
+# 1. **Lithology on the fine grid.** Each role (mantle, crust, basalt,
+#    sediments) is turned into an indicator (1 inside, 0 outside),
+#    interpolated, smoothed with a Gaussian (`SMOOTH` = 300 m) and the role
+#    with the largest value wins. This keeps contacts **sharp** (a sharp
+#    impedance contrast is what makes a reflection) but removes the staircase
+#    of the Mandyoc grid and the noise of the particles, which would otherwise
+#    create spurious diffractions. Inside the sediments, the code of each
+#    deposited layer (its age) is interpolated in the same smooth way, so the
+#    layers keep their geometry (onlaps, wedges).
+# 2. **Water** fills everything above the seafloor (`surface.nc`) and below
+#    sea level, whether or not the scenario has a water layer.
 # 3. **Density** `rho0 (1 − α T)`, with `rho0` from `interfaces.txt` and α
 #    from `param.txt`, i.e. the same thermal expansion used by Mandyoc.
 #    `density.nc` is not used directly because it is on the 1 km mesh and
 #    smears contacts.
-# 4. **Vp** per lithology with a temperature correction: hot mantle under the
-#    rift is slower than cold mantle, as observed in refraction data.
-# 5. **Serpentinization.** At magma-poor margins the exhumed mantle is
+# 4. **Vp** per role with a temperature correction: hot mantle under the
+#    rift is slower than cold mantle, as observed in refraction data. The
+#    extracted magma is basalt (`VP0["basalt"]`).
+# 5. **Sediments.** Mandyoc gives them a constant density, but their seismic
+#    properties are controlled by compaction: the porosity decreases
+#    exponentially with burial (Athy's law), so Vp increases and density
+#    increases with depth below the seafloor. Vp follows Wyllie's time
+#    average of water and matrix. Each deposited layer gets its own surface
+#    porosity and matrix velocity (random, around the mean values): the
+#    impedance contrasts between layers produce the layered reflections,
+#    onlaps and wedges of real sections. The temperature correction is not
+#    applied to them (compaction dominates).
+# 6. **Top of the basement.** The first crystalline rock (crust, basalt or
+#    mantle) below the sediments. Serpentinization is measured from it.
+# 7. **Serpentinization.** At magma-poor margins the exhumed mantle is
 #    hydrated near its top; Gillard et al. (2019) summarise refraction
 #    velocities increasing from ~4.3 km/s at the top of the basement to
 #    ~7.3 km/s a few km below it. Serpentinization needs water (so it
@@ -293,7 +474,7 @@ def plot_units(ax, units, faults, extent):
 #    `SERP_DEPTH` = 4 km) and low temperature (serpentine is not formed
 #    above ~400 °C, `SERP_TMAX`). The serpentinized fraction mixes the
 #    velocity and density of the mantle with those of serpentinite.
-# 6. **Small-scale heterogeneity.** Real basement is not homogeneous, and
+# 8. **Small-scale heterogeneity.** Real basement is not homogeneous, and
 #    its internal reflectivity gives seismic sections their texture. It is
 #    represented with von Kármán random media, the standard description of
 #    crustal heterogeneity in seismic scattering studies (e.g. Frankel &
@@ -302,8 +483,10 @@ def plot_units(ax, units, faults, extent):
 #    crust is often laminated and reflective, so its perturbations are long
 #    horizontally (4 km) and thin vertically (150 m); the upper crust is
 #    weaker and more isotropic; the mantle is nearly transparent; the
-#    serpentinized mantle is the most heterogeneous.
-# 7. **Faults from the strain.** The 1 km strain field resolves the shear
+#    serpentinized mantle is the most heterogeneous; basalt flows and dykes
+#    are heterogeneous at short scales; sediments only have weak variations
+#    along each layer.
+# 9. **Faults from the strain.** The 1 km strain field resolves the shear
 #    bands (faults, detachments, conjugate systems). The regional trend of the
 #    strain is removed (Gaussian high-pass, `highpass` = 4 km) so that only
 #    *localized* strain remains. Where strain is localized:
@@ -314,6 +497,8 @@ def plot_units(ax, units, faults, extent):
 #
 #    Faults are only kept in the brittle domain (T < 550–700 °C), where
 #    discrete faults are expected; deeper, hot strain is distributed flow.
+#    They are not added in the sediments (`FAULTS["in_sediments"]`), whose
+#    layers are already deformed by Mandyoc and keep their reflections.
 
 
 # %%
@@ -358,35 +543,71 @@ def build_model(x, depth, seed=SEED):
                                          bounds_error=False, fill_value=None)  # fmt: skip
         return interp(points).reshape(dd.shape).astype(np.float32)
 
-    # Smooth each lithology indicator and take the argmax: sharp contacts with
-    # smooth geometry
+    # Smooth the indicator of each solid role and take the argmax: sharp
+    # contacts with smooth geometry (water and air come from the surface)
+    code_role = xr.DataArray(CODE_ROLE[lith.values.astype(int)], coords=lith.coords)
     best = np.full(dd.shape, -np.inf, dtype=np.float32)
-    litho = np.zeros(dd.shape, dtype=np.int8)
-    for c in sorted(LITHOLOGIES):
-        indicator = to_fine((lith == c).astype(float))
+    role = np.zeros(dd.shape, dtype=np.int8)
+    for name in CRYSTALLINE + ["sediments"]:
+        if name not in LAYER_ROLES:
+            continue
+        indicator = to_fine((code_role == ROLES.index(name)).astype(float))
         indicator = gaussian_filter(indicator, SMOOTH / spacing, mode="nearest")
-        litho[indicator > best] = c
+        role[indicator > best] = ROLES.index(name)
         best = np.maximum(best, indicator)
     del best
 
-    seafloor = np.clip(-surf.interp(x=x).values - AIR, 0, None)  # top of basement
-    litho[dd < seafloor[None, :]] = WATER
-    rock = litho != WATER
+    seafloor = np.clip(-surf.interp(x=x).values - AIR, 0, None)  # top of the solid
+    role[dd < seafloor[None, :]] = ROLES.index("water")
+    rock = role != ROLES.index("water")
+    sediments = role == ROLES.index("sediments")
     temperature = np.clip(to_fine(temp), 0, None)
     temperature[~rock] = 0.0
     accumulated_strain = to_fine(strain)
 
-    rho0 = np.array([RHO0[c] for c in sorted(LITHOLOGIES)], dtype=np.float32)
-    vp0 = np.array([LITHOLOGIES[c]["vp0"] for c in sorted(LITHOLOGIES)], dtype=np.float32)
+    # Deposited sediment layer of each cell: the sediment code (its age),
+    # extended to the cells around the sediments and interpolated smoothly
+    sed_layer = np.zeros(dd.shape, dtype=np.int16)
+    if sediments.any():
+        is_sed = (code_role == ROLES.index("sediments")).values
+        nearest = distance_transform_edt(~is_sed, return_distances=False, return_indices=True)
+        age = lith.copy(data=lith.values[tuple(nearest)].astype(float))
+        age = gaussian_filter(to_fine(age), 0.5 * SMOOTH / spacing, mode="nearest")
+        sed_layer[sediments] = np.round(age[sediments]).astype(np.int16)
+
+    # Crystalline rocks: rho0 of each code, Vp of each role, corrected by T
+    rho0_role = np.zeros(len(ROLES), dtype=np.float32)
+    vp0_role = np.zeros(len(ROLES), dtype=np.float32)
+    for name in CRYSTALLINE:
+        if name in LAYER_ROLES:
+            rho0_role[ROLES.index(name)] = np.mean(RHO0[LAYER_ROLES[name]])
+            vp0_role[ROLES.index(name)] = VP0[name]
     density = np.full(dd.shape, RHO_WATER, dtype=np.float32)
     vp = np.full(dd.shape, VP_WATER, dtype=np.float32)
-    density[rock] = rho0[litho[rock]] * (1 - ALPHA * temperature[rock])
-    vp[rock] = vp0[litho[rock]] + DVPDT * temperature[rock]
+    crystal = rock & ~sediments
+    density[crystal] = rho0_role[role[crystal]] * (1 - ALPHA * temperature[crystal])
+    vp[crystal] = vp0_role[role[crystal]] + DVPDT * temperature[crystal]
+
+    # Sediments: compaction and one surface porosity / matrix per layer
+    if sediments.any():
+        s = SEDIMENTS
+        layer_rng = np.random.default_rng(seed + 100)
+        n_codes = int(sed_layer.max()) + 1
+        vp_matrix = s["vp_matrix"] * (1 + s["layer_std"] * layer_rng.standard_normal(n_codes))
+        phi0 = np.clip(s["phi0"] + s["phi0_std"] * layer_rng.standard_normal(n_codes), 0.2, 0.75)
+        burial = np.clip(dd - seafloor[None, :], 0, None)[sediments]
+        layer = sed_layer[sediments]
+        phi = phi0[layer] * np.exp(-burial / s["decay"])
+        vp[sediments] = 1 / (phi / VP_WATER + (1 - phi) / vp_matrix[layer])
+        density[sediments] = phi * RHO_WATER + (1 - phi) * s["rho_grain"]
+
+    # Top of the basement: first crystalline rock below the sediments
+    basement_top = np.where(crystal.any(axis=0), depth[np.argmax(crystal, axis=0)], depth[-1])
 
     # Serpentinization of the cold, shallow mantle
-    below_basement = dd - seafloor[None, :].astype(np.float32)
+    below_basement = dd - basement_top[None, :].astype(np.float32)
     serp = (
-        np.isin(litho, MANTLE)
+        np.isin(role, [ROLES.index(r) for r in MANTLE])
         * np.clip(1 - below_basement / SERP_DEPTH, 0, 1)
         * np.clip((SERP_TMAX - temperature) / 50.0, 0, 1)
     ).astype(np.float32)
@@ -397,8 +618,10 @@ def build_model(x, depth, seed=SEED):
     rng = np.random.default_rng(seed)
     dlnv = np.zeros(dd.shape, dtype=np.float32)
     for het in HETEROGENEITY:
-        field = von_karman(dd.shape, spacing, het["ax"], het["az"], rng=rng)
-        dlnv += np.isin(litho, het["codes"]) * (1 - serp) * het["std"] * field
+        mask = np.isin(role, [ROLES.index(r) for r in het["roles"] if r in LAYER_ROLES])
+        if mask.any():
+            field = von_karman(dd.shape, spacing, het["ax"], het["az"], rng=rng)
+            dlnv += mask * (1 - serp) * het["std"] * field
     h = SERP_HETEROGENEITY
     dlnv += serp * h["std"] * von_karman(dd.shape, spacing, h["ax"], h["az"], rng=rng)
 
@@ -407,7 +630,8 @@ def build_model(x, depth, seed=SEED):
         accumulated_strain, FAULTS["highpass"] / spacing, mode="nearest"), 0, None)  # fmt: skip
     bands /= np.percentile(bands[rock], 99)
     brittle = np.clip((BRITTLE_T[1] - temperature) / (BRITTLE_T[1] - BRITTLE_T[0]), 0, 1)
-    faults = (rock * brittle * np.clip(bands, 0, 1)).astype(np.float32)
+    fault_rocks = rock if FAULTS["in_sediments"] else crystal
+    faults = (fault_rocks * brittle * np.clip(bands, 0, 1)).astype(np.float32)
     dlnv -= FAULTS["damage"] * faults
     dip = band_dip(accumulated_strain, spacing)
     step = FAULTS["dip_step"]
@@ -421,9 +645,10 @@ def build_model(x, depth, seed=SEED):
     vp[rock] *= 1 + dlnv[rock]
     density[rock] *= 1 + RHO_VP * dlnv[rock]
 
-    return dict(x=x, depth=depth, litho=litho, seafloor=seafloor, rock=rock,
-                temperature=temperature, strain=accumulated_strain, serp=serp,
-                faults=faults, density=density, vp=vp)  # fmt: skip
+    return dict(x=x, depth=depth, role=role, sed_layer=sed_layer, seafloor=seafloor,
+                basement_top=basement_top, rock=rock, temperature=temperature,
+                strain=accumulated_strain, serp=serp, faults=faults, density=density,
+                vp=vp)  # fmt: skip
 
 
 def two_way_time(model):
@@ -454,7 +679,8 @@ extent = [X0 / 1e3, X1 / 1e3, ZMAX / 1e3, 0]
 print(f"serpentinized area: {model['serp'].sum() * DX**2 / 1e6:.0f} km² (equivalent)")
 
 fig, axes = plt.subplots(4, 1, figsize=(11, 11), sharex=True, layout="constrained")
-plot_units(axes[0], lithology_units(model)[::4, ::4], model["faults"][::4, ::4], extent)
+plot_units(axes[0], lithology_units(model)[::4, ::4], model["faults"][::4, ::4], extent,
+           sediment_stripes(model)[::4, ::4])  # fmt: skip
 for ax, field, title, cmap in zip(
     axes[1:],
     [model["serp"], model["faults"], model["vp"] / 1e3],
@@ -532,6 +758,11 @@ def depth_to_time(image, twt, time):
                      for j in range(image.shape[1])], axis=1)  # fmt: skip
 
 
+def twt_start(seafloor_twt, ta):
+    """Start of a TWT window: ta, or just above the seafloor if ta is None."""
+    return ta if ta is not None else max(0.0, float(np.percentile(seafloor_twt, 10)) - 0.3)
+
+
 # %% [markdown]
 # ## 4. Convolutional section (whole window)
 #
@@ -567,6 +798,8 @@ conv[t[:, None] < seafloor_twt[None, :] - 0.05] = 0  # top mute (water column)
 fig, ax = plt.subplots(figsize=(13, 6), layout="constrained")
 plot_seismic(conv, t, x, ax, f"Convolutional section ({CONV_FPEAK:.0f} Hz), AGC",
              tlim=(seafloor_twt.min() - 0.3, t[-1]))  # fmt: skip
+CANDIDATES = [(xa, xb, twt_start(seafloor_twt[(x >= xa) & (x <= xb)], ta))
+              for xa, xb, ta in CANDIDATES]  # fmt: skip
 for xa, xb, ta in CANDIDATES:
     ax.add_patch(plt.Rectangle((xa / 1e3, ta), (xb - xa) / 1e3, 4.0, fill=False,
                                ec="tab:red", ls="--", lw=1))  # fmt: skip
@@ -711,6 +944,7 @@ source[:3] = 0  # rows 0-2 are overwritten by the top boundary condition
 
 delay = 2 * np.sqrt(np.pi) / F_CUT  # tremelique's causal Ricker delay
 # Record long enough to fill the displayed window under the shallowest receiver
+ZOOM_T0 = twt_start(2 * zoom["seafloor"] / VP_WATER, ZOOM_T0)
 record = ZOOM_T0 + ZOOM_TLEN - two_way_time(zoom)[rec_row, np.arange(xz.size)].min()
 
 
@@ -781,7 +1015,8 @@ ZOOM_FILE = OUTPUT / f"seismic_section_parallel_zoom_{ZOOM_TAG}.nc"
 # Everything that changes the zoom results
 PARAMETERS = json.dumps(dict(
     TIME=TIME, SEED=SEED, SMOOTH=SMOOTH, ALPHA=ALPHA, DVPDT=DVPDT,
-    RHO_WATER=RHO_WATER, VP_WATER=VP_WATER, LITHOLOGIES=LITHOLOGIES,
+    RHO_WATER=RHO_WATER, VP_WATER=VP_WATER, LAYER_ROLES=LAYER_ROLES, VP0=VP0,
+    SEDIMENTS=SEDIMENTS, Z_SEA=Z_SEA,
     SERP_DEPTH=SERP_DEPTH, SERP_TMAX=SERP_TMAX, VP_SERP=VP_SERP, RHO_SERP=RHO_SERP,
     HETEROGENEITY=HETEROGENEITY, SERP_HETEROGENEITY=SERP_HETEROGENEITY,
     RHO_VP=RHO_VP, HURST=HURST, FAULTS=FAULTS, BRITTLE_T=BRITTLE_T, NOISE=NOISE,
@@ -873,6 +1108,7 @@ def depth_to_time_nearest(field, twt, time, fill=-1):
 
 # Lithology of the zoom in TWT, aligned with the sections
 units_time = depth_to_time_nearest(lithology_units(zoom), twt_zoom, tz)
+stripes_time = depth_to_time_nearest(sediment_stripes(zoom).astype(np.int8), twt_zoom, tz) == 1
 faults_time = depth_to_time(zoom["faults"], twt_zoom, tz)
 keep = (tz >= tlim[0]) & (tz <= tlim[1])
 # The TWT-depth relation changes along x: the depth axis on the right uses the
@@ -883,7 +1119,7 @@ zoom_depth_km = zoom["depth"] / 1e3
 
 def plot_lithology(ax):
     plot_units(ax, units_time[keep], faults_time[keep],
-               [XZ0 / 1e3, XZ1 / 1e3, tz[keep][-1], tz[keep][0]])  # fmt: skip
+               [XZ0 / 1e3, XZ1 / 1e3, tz[keep][-1], tz[keep][0]], stripes_time[keep])  # fmt: skip
     ax.set_ylabel("TWT [s]")
     ax.set_xlabel("x [km]")
     right = ax.secondary_yaxis(
@@ -921,7 +1157,8 @@ fig = plt.figure(figsize=(13, 17), layout="constrained")
 grid = fig.add_gridspec(4, 1, height_ratios=[0.6, 1, 1, 1])
 # Whole model in depth, with the zoom window
 ax_model = fig.add_subplot(grid[0])
-plot_units(ax_model, lithology_units(model)[::4, ::4], model["faults"][::4, ::4], extent)
+plot_units(ax_model, lithology_units(model)[::4, ::4], model["faults"][::4, ::4], extent,
+           sediment_stripes(model)[::4, ::4])  # fmt: skip
 ax_model.add_patch(plt.Rectangle((XZ0 / 1e3, 0), (XZ1 - XZ0) / 1e3, ZZMAX / 1e3,
                                  fill=False, ec="k", ls="--", lw=0.8))  # fmt: skip
 ax_model.set_ylabel("Depth [km]")
@@ -948,9 +1185,11 @@ save(fig, f"zoom_{ZOOM_TAG}_final")
 # %% [markdown]
 # ## Limitations and next steps
 #
-# * No sediments: the scenario has no surface processes; adding them (or
-#   running Mandyoc with them) would give the strong layered reflections of
-#   the published sections above the basement.
+# * Sediments only exist if the scenario has surface processes; their
+#   properties come from a compaction law, not from Mandyoc, and the
+#   contrasts between layers are random (one per deposited layer).
+# * Slow sediments lower the frequency of the tremelique zoom (the slowest
+#   rock sets the grid budget); a smaller `DXZ` compensates, at a cost.
 # * Acoustic only (no S waves, no converted waves), zero-offset only.
 # * The heterogeneity and the fault fabric are statistical: they reproduce
 #   the texture of real data, not specific reflectors.

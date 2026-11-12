@@ -1,8 +1,9 @@
 # Synthetic seismic section
 
 `seismic_section.py` (and the same code as a notebook, `seismic_section.ipynb`) builds a synthetic seismic
-section of a rifted margin from a Mandyoc scenario, from the basement down (no sediments). It converts the
-lithology, temperature and strain into density and P-wave velocity, computes a high-frequency convolutional
+section of a rifted margin from a Mandyoc scenario. It works with scenarios with and without sediments
+(surface processes), extracted basaltic magma and a water layer. It converts the lithology, temperature and strain
+into density and P-wave velocity, computes a high-frequency convolutional
 section of a wide window, and simulates the wave propagation in a zoom with
 [tremelique](https://www.fatiando.org/tremelique), followed by a reverse-time migration (RTM). The notebook explains
 each step and the reason for each choice in its text cells.
@@ -19,8 +20,43 @@ python ~/opt/post_processing/seismic_section.py
 ```
 
 The notebook reads the scenario from `DATA` (cell "Parameters"). It reads `lithology.nc`, `temperature.nc`,
-`strain.nc`, `surface.nc` and `interfaces.txt`; a lithology on a fine mesh (e.g. 200 m) and temperature and strain
-on a 1 km mesh are needed to resolve the faults and the serpentinization.
+`strain.nc`, `surface.nc`, `interfaces.txt` and `param.txt`, and `SP_vc.txt` and `infos_*.txt` when the scenario
+has them; a lithology on a fine mesh (e.g. 200 m) and temperature and strain on a 1 km mesh are needed to resolve
+the faults and the serpentinization. Set `TIME` and the windows (`X0`, `X1`, `XZ0`, `XZ1`, `CANDIDATES`) for each
+scenario.
+
+## Layer roles, sea level, sediments and basalt
+
+The seismic properties depend on what each Mandyoc layer is, and the layers change between scenarios. With
+`LAYER_ROLES = "auto"` the role of each layer code (`asthenosphere`, `lithospheric mantle`, `lower crust`,
+`upper crust`, `basalt`, `sediments`, `water`, `air`) is found, in this order of priority, from:
+
+1. the names of the layers in `infos_*.txt`, when the scenario has it;
+2. the sediment codes of `SP_vc.txt` (one code per time interval of the surface processes);
+3. the densities of `interfaces.txt`: < 500 kg/m³ air, < 1200 water, < 2550 sediments, ≥ 3200 mantle (code 0 is
+   the asthenosphere), 2750–3200 lower crust or, **above an upper-crust layer, basalt** (extracted magma sits on
+   top of the crust), otherwise upper crust.
+
+The roles are printed; if they are wrong, give `LAYER_ROLES` by hand, e.g.
+`{"asthenosphere": [0], "lithospheric mantle": [1, 2, 3], "lower crust": [4], "upper crust": [5],
+"basalt": [6], "sediments": list(range(7, 40)), "water": [40], "air": [41]}`.
+
+With `SEA_LEVEL = "auto"`, sea level is the top of the water layer at `TIME` when the scenario has one (the whole
+model may move up or down during the run), otherwise Mandyoc's `sea_level` above the mean initial surface. Water
+fills everything between the seafloor (`surface.nc`) and sea level; land above sea level is cut off.
+
+- **Sediments**: Mandyoc gives them a constant density, but their seismic properties come from compaction. The
+  porosity decreases with burial (Athy's law, `SEDIMENTS["phi0"]`, `["decay"]`), Vp follows Wyllie's time average of
+  water and matrix and the density follows the porosity, so Vp grows from ~2.2 km/s at the seafloor to ~4.5 km/s at
+  depth. Each deposited layer (each sediment code) gets its own surface porosity and matrix velocity, which makes
+  the layered reflections, onlaps and wedges. Faults are not added in the sediments (`FAULTS["in_sediments"]`).
+- **Basalt** (extracted magma): Vp `VP0["basalt"]` with the temperature correction, density from `interfaces.txt`,
+  short-scale heterogeneity.
+- **Top of the basement**: the first crystalline rock (crust, basalt or mantle) below the sediments;
+  serpentinization is measured from it.
+
+Slow sediments lower the frequency of the tremelique zoom (the slowest rock sets the grid budget); a smaller `DXZ`
+compensates, at a cost that grows with `1/DXZ³`.
 
 ## Steps
 
@@ -28,11 +64,13 @@ Both notebooks start with a flowchart of these steps, drawn by `plot_flowchart` 
 `functions/seismic_section_flowchart.py`.
 
 
-1. **Load** one time step (`TIME`) of the Mandyoc fields, cropped around the window, with depths referenced to sea
-   level (the sticky air is removed).
-2. **Fine grid**: each lithology is smoothed and the largest one wins, so the contacts stay sharp without the
-   staircase of the Mandyoc mesh; water fills everything above the seafloor (`surface.nc`).
-3. **Properties**: density `rho0 (1 - alpha T)` and Vp per lithology with a temperature correction, plus
+1. **Load** one time step (`TIME`) of the Mandyoc fields, cropped around the window; find the roles of the layers
+   and sea level, and reference the depths to sea level.
+2. **Fine grid**: each role is smoothed and the largest one wins, so the contacts stay sharp without the
+   staircase of the Mandyoc mesh; the age (code) of each sediment layer is interpolated the same way; water fills
+   everything between the seafloor (`surface.nc`) and sea level.
+3. **Properties**: density `rho0 (1 - alpha T)` and Vp per role with a temperature correction for the crust,
+   basalt and mantle; compaction and one impedance per deposited layer for the sediments; plus
    - serpentinization of the cold (< `SERP_TMAX`), shallow (< `SERP_DEPTH` below the basement) mantle;
    - small-scale heterogeneity inside each layer (von Kármán random media, laminated in the lower crust), which
      does not change the geometry;
@@ -49,13 +87,16 @@ Both notebooks start with a flowchart of these steps, drawn by `plot_flowchart` 
 | --- | --- |
 | `TIME` | Model time [Myr]; the nearest output is used. |
 | `X0`, `X1`, `ZMAX`, `DX` | Window, maximum depth and grid spacing of the convolutional section [m]. |
-| `LITHOLOGIES` | Vp at 0 °C of each Mandyoc layer code (order of `interfaces.txt`). |
+| `LAYER_ROLES` | Role of each Mandyoc layer code: `"auto"` or a dict `{role: [codes]}`. |
+| `SEA_LEVEL` | `"auto"` (top of the water layer, or initial surface + `sea_level`) or a z in Mandyoc coordinates [m]. |
+| `VP0` | Vp at 0 °C of the crust, basalt and mantle [m/s]. |
+| `SEDIMENTS` | Compaction (surface porosity, decay length), matrix velocity, grain density and the spread between layers. |
 | `SERP_DEPTH`, `SERP_TMAX` | Depth below the basement and maximum temperature of the serpentinization. |
 | `HETEROGENEITY`, `SERP_HETEROGENEITY` | Strength and correlation lengths of the random heterogeneity. |
 | `FAULTS`, `BRITTLE_T` | Faults from the strain: high-pass length, damage, fabric, brittle temperatures. |
-| `CANDIDATES` | Windows `(x start, x end, TWT start)` of the 4 s zooms of the convolutional section. |
+| `CANDIDATES` | Windows `(x start, x end, TWT start)` of the 4 s zooms of the convolutional section; a TWT start of `None` starts just above the seafloor. |
 | `XZ0`, `XZ1`, `ZZMAX`, `DXZ` | Window, maximum depth and grid spacing of the tremelique zoom [m]. |
-| `ZOOM_T0`, `ZOOM_TLEN` | TWT window of the zoom figures [s]. |
+| `ZOOM_T0`, `ZOOM_TLEN` | TWT window of the zoom figures [s]; `ZOOM_T0 = None` starts just above the seafloor. |
 
 The run time is in the two tremelique simulations of the zoom: it grows with the size of the zoom and with
 `1/DXZ³` (minutes for 70 km × 32 km, about 40 min for 150 km × 36 km with `DXZ = 20` m).
@@ -125,7 +166,7 @@ sim.run(1000)
 
 ## Limitations
 
-- No sediments (the scenario has no surface processes).
+- The properties of the sediments come from a compaction law, and the contrasts between layers are random.
 - Acoustic (P waves only) and zero offset: no converted waves, multiples and amplitudes versus offset are not
   correct.
 - The heterogeneity and the fault fabric are statistical: they give the texture of real data, not specific

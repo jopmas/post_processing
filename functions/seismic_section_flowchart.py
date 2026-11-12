@@ -65,21 +65,22 @@ def plot_flowchart(ax=None, parallel=False):
 
     # Inputs and model building (trunk)
     _box(ax, 6, 16.3, 9.6, 1.3, "Mandyoc outputs (NetCDF from tapioca)",
-         "lithology.nc (200 m), temperature.nc, strain.nc (1 km), surface.nc,\n"
-         "interfaces.txt (rho0 of each layer), param.txt (thermal expansion α)", "input")  # fmt: skip
+         "lithology.nc, temperature.nc, strain.nc, surface.nc; interfaces.txt (rho0),\n"
+         "param.txt (α, sea level), SP_vc.txt / infos_*.txt (roles of the layers)", "input")  # fmt: skip
     _box(ax, 6, 14.35, 9.6, 1.3, "1. Load",
-         "one time step (TIME), cropped around the window;\n"
-         "depths referenced to sea level (sticky air removed)", "model")  # fmt: skip
+         "roles of the layers (mantle, crust, basalt, sediments, water, air);\n"
+         "depths below sea level (top of the water layer or initial surface)", "model")  # fmt: skip
     _box(ax, 6, 12.4, 9.6, 1.3, "2. Fine grid",
-         "smoothed lithology indicators → largest wins (sharp contacts,\n"
-         "no staircase); water above the seafloor (surface.nc)", "model")  # fmt: skip
-    _box(ax, 6, 10.05, 9.6, 1.9, "3. Physical properties: density and Vp",
-         "density rho0 (1 − α T); Vp per lithology − 0.4 m/s/K × T\n"
-         "+ serpentinization: mantle below 400 °C, down to 4 km below the basement\n"
+         "smoothed role indicators → largest wins (sharp contacts, no staircase);\n"
+         "age of each sediment layer; water above the seafloor (surface.nc)", "model")  # fmt: skip
+    _box(ax, 6, 10.0, 9.6, 2.0, "3. Physical properties: density and Vp",
+         "crust, basalt, mantle: density rho0 (1 − α T); Vp per role − 0.4 m/s/K × T\n"
+         "sediments: compaction (Athy) + one impedance per deposited layer\n"
+         "+ serpentinization: mantle < 400 °C, < 4 km below the top of the basement\n"
          "+ heterogeneity: von Kármán random media (laminated lower crust)\n"
          "+ faults: localized strain → damage zone + fabric along the band (brittle)",
          "model")  # fmt: skip
-    for y0, y1 in [(15.65, 15.0), (13.7, 13.05), (11.75, 11.05)]:
+    for y0, y1 in [(15.65, 15.0), (13.7, 13.05), (11.75, 11.0)]:
         _arrow(ax, (6, y0), (6, y1))
 
     # Convolutional branch (left)
