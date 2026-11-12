@@ -21,7 +21,12 @@ from its name (`LAYER_NAME_COLORS`), for any number of layers.
    :toctree: ../generated/
 
     get_lithology_colors
+    get_layer_roles
+    layer_roles
 ```
+
+For scenarios with sediments or a water layer, `'auto'` uses the roles of the layers (`get_layer_roles`) and
+`ROLE_COLORS`, with the sediment layers in bands of `SEDIMENT_COLORS`.
 
 ---
 

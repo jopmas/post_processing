@@ -32,7 +32,7 @@ sys.path.append(os.path.abspath(path_to_functions))
 
 if '' in sys.path:
     sys.path.remove('')
-from functions.mandyocIO import change_dataset, plot_property, plot_lithology_legend, get_lithology_colors, read_tapioca_datasets
+from functions.mandyocIO import change_dataset, plot_property, plot_lithology_legend, get_lithology_colors, read_tapioca_datasets, get_layer_roles, _legend_colors, COLOR_SED
 
 ####################################################################################################################################
 model_path = os.getcwd() # Get local file
@@ -226,6 +226,17 @@ lithology_colors = 'auto' #any number of layers: colors from the names of the la
 
 colors = get_lithology_colors(model_path, lithology_colors)
 
+#Scenarios with surface processes: each deposited sediment layer (one Mandyoc code per time interval, SP_vc.txt)
+#gets a color of SEDIMENT_COLORS (functions/mandyocIO.py), in cycle, to show the stratigraphy (sediment_layers = True),
+#or all of them the same color (False). No effect without sediments.
+sediment_layers = True
+# sediment_layers = False
+sediment_codes = sorted(get_layer_roles(model_path).get('sediments', []))
+if(not sediment_layers):
+    colors = [COLOR_SED if code in sediment_codes else color for code, color in enumerate(colors)]
+#legend: one band per role, the sediments as a single band
+legend_colors = _legend_colors([COLOR_SED if code in sediment_codes else color for code, color in enumerate(colors)])
+
 #Creating a custom colormap according to the list of colors defined above.
 # This colormap will be used to plot the lithology mesh, where each lithology code is represented by a specific color.
 # Use vmin=-0.5 and vmax=len(colors)-0.5 so the code k gets colors[k]
@@ -299,7 +310,8 @@ def plot_lithology_frame(axs, i):
     axs.set_xlim(xlims)
 
     #lithology/strain legend with fixed size [inches], whatever the size of the figure
-    plot_lithology_legend(axs, colors=[color_uc, color_lc, color_lit, color_ast], vmin=-0.5, vmax=0.9, alpha=0.2,
+    #colors of the layers of the scenario, top to bottom (sediments, water and basalt when the scenario has them)
+    plot_lithology_legend(axs, colors=legend_colors, vmin=-0.5, vmax=0.9, alpha=0.2,
                           position=(0.97, 0.25), loc='lower right')
 
     if(plot_melt):

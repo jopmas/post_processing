@@ -56,6 +56,7 @@ Input files: `strain.nc`, `lithology.nc`, `temperature.nc`, `density.nc` (and `P
 | Variable | Meaning |
 | --- | --- |
 | `lithology_colors` | `'auto'` (any number of layers, see `get_lithology_colors`), `'double_keel'`, `'rifting'`, `'accordion'`, `'svg_accordion'` or a list with one color per layer code. |
+| `sediment_layers` | Scenarios with surface processes: each deposited sediment layer in a color of `SEDIMENT_COLORS`, in cycle, to show the stratigraphy (`True`, default), or all of them in the color of the sediments (`False`). Water and basalt get their own colors with `lithology_colors = 'auto'`, and the legend shows the layers of the scenario. |
 | `properties` | Properties to plot (default `['lithology']`). `'lithology'` is plotted by the script; the others (`'density'`, `'radiogenic_heat'`, `'pressure'`, `'strain'`, `'strain_rate'`, `'temperature'`, `'temperature_anomaly'`, `'surface'`, `'viscosity'`) with `plot_property`, from `<property>.nc` (`heat.nc` for `radiogenic_heat`). One set of frames, video and gif per property. |
 | `plot_isotherms` | Isotherms (`isotherms`). |
 | `topo_from_density` | Air/crust interface of the properties plotted with `plot_property`: `False` (default) from `surface.nc` (from `density.nc` if there is no `surface.nc`), `True` from `density.nc`. |

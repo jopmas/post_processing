@@ -37,7 +37,10 @@ The seismic properties depend on what each Mandyoc layer is, and the layers chan
    the asthenosphere), 2750–3200 lower crust or, **above an upper-crust layer, basalt** (extracted magma sits on
    top of the crust), otherwise upper crust.
 
-The roles are printed; if they are wrong, give `LAYER_ROLES` by hand, e.g.
+The roles come from `get_layer_roles` of `functions/mandyocIO.py`, the same function that gives the colors of the
+videos (`frames_generator.py`), so both always agree. In the lithology panels the deposited sediment layers are
+drawn in bands of `SEDIMENT_COLORS`, as in the videos. The roles are printed; if they are wrong, give `LAYER_ROLES`
+by hand, e.g.
 `{"asthenosphere": [0], "lithospheric mantle": [1, 2, 3], "lower crust": [4], "upper crust": [5],
 "basalt": [6], "sediments": list(range(7, 40)), "water": [40], "air": [41]}`.
 

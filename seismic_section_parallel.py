@@ -63,7 +63,9 @@ from functions.mandyocIO import (  # noqa: E402
     COLOR_SED,
     COLOR_UC,
     COLOR_WATER,
-    _read_layers_from_infos,
+    ROLES,
+    SEDIMENT_COLORS,
+    get_layer_roles,
     get_lithology_colors,
 )
 from functions.seismic_section_flowchart import plot_flowchart  # noqa: E402
@@ -238,7 +240,8 @@ PAD = 60  # absorbing padding [cells]
 # **Layer roles.** The seismic properties depend on what each Mandyoc layer
 # is, which changes from scenario to scenario (number of mantle and crustal
 # layers, one sediment code per time interval, extracted basalt, water...).
-# `layer_roles` finds them, in this order of priority:
+# `get_layer_roles` (`functions/mandyocIO.py`, also used for the colours of
+# the videos) finds them, in this order of priority:
 #
 # 1. the names of the layers in `infos_*.txt` (written by tapioca), when
 #    the scenario has it;
@@ -261,18 +264,8 @@ def load(name):
                   z=slice(-(AIR + ZMAX + 20e3), None)).load()  # fmt: skip
 
 
-ROLES = ["asthenosphere", "lithospheric mantle", "lower crust", "upper crust", "basalt",
-         "sediments", "water", "air"]  # fmt: skip
 CRYSTALLINE = ["asthenosphere", "lithospheric mantle", "lower crust", "upper crust", "basalt"]
 MANTLE = ["asthenosphere", "lithospheric mantle"]
-# Keywords of the layer names of infos_*.txt (first match wins)
-NAME_KEYWORDS = [
-    ("air", "air"), ("water", "water"), ("sediment", "sediments"), ("basin", "sediments"),
-    ("basalt", "basalt"), ("oceanic_crust", "basalt"), ("magma", "basalt"),
-    ("asthenosphere", "asthenosphere"), ("lithospher", "lithospheric mantle"),
-    ("craton", "lithospheric mantle"), ("lower_crust", "lower crust"),
-    ("upper_crust", "upper crust"), ("decol", "upper crust"),
-]  # fmt: skip
 
 
 def read_param(name, default):
@@ -284,41 +277,12 @@ def read_param(name, default):
     return default
 
 
-def layer_roles(rho, names, sediment_codes):
-    """Role (an item of ROLES) of each layer code, as {role: [codes]}."""
-    roles, above_upper_crust = {}, False
-    for code, density in enumerate(rho):
-        name = names[code] if code < len(names) else ""
-        role = next((r for key, r in NAME_KEYWORDS if key in name), None)
-        if role is None and code in sediment_codes:
-            role = "sediments"
-        if role is None:
-            if density < 500:
-                role = "air"
-            elif density < 1200:
-                role = "water"
-            elif density < 2550:
-                role = "sediments"
-            elif density >= 3200:
-                role = "asthenosphere" if code == 0 else "lithospheric mantle"
-            elif density >= 2750:
-                role = "basalt" if above_upper_crust else "lower crust"
-            else:
-                role = "upper crust"
-        above_upper_crust |= role == "upper crust"
-        roles.setdefault(role, []).append(code)
-    return roles
-
-
 with open(DATA / "interfaces.txt") as f:
     for line in f:
         if line.startswith("rho"):
             RHO0 = np.array(line.split()[1:], dtype=float)
-if LAYER_ROLES == "auto":
-    names = [name for name, _ in _read_layers_from_infos(str(DATA))]
-    sp_file = DATA / "SP_vc.txt"
-    sediment_codes = set(np.loadtxt(sp_file, ndmin=2)[:, 1].astype(int)) if sp_file.exists() else set()
-    LAYER_ROLES = layer_roles(RHO0, names, sediment_codes)
+if LAYER_ROLES == "auto":  # functions/mandyocIO.py, shared with the frames of the videos
+    LAYER_ROLES = get_layer_roles(str(DATA))
 CODE_ROLE = np.zeros(len(RHO0), dtype=np.int8)  # role index of each code
 for role, codes in LAYER_ROLES.items():
     CODE_ROLE[codes] = ROLES.index(role)
@@ -364,7 +328,9 @@ def save(fig, name):
 # faults are shaded in purple on top of the lithology, with an opacity
 # proportional to the fault weight (the same field shown in the "Faults"
 # panel), instead of contour lines, which would draw closed polygons around
-# shear bands.
+# shear bands. The deposited sediment layers are drawn in bands of yellow,
+# brown, ochre and orange (`SEDIMENT_COLORS`), as in the videos, to show the
+# stratigraphy.
 
 
 # %%
@@ -407,18 +373,27 @@ def lithology_units(m):
     ).astype(np.int8)  # fmt: skip
 
 
-def sediment_stripes(m):
-    """True in every other deposited sediment layer (to draw the layering)."""
-    return (m["role"] == ROLES.index("sediments")) & (m["sed_layer"] % 2 == 1)
+def sediment_bands(m):
+    """Band of SEDIMENT_COLORS of every sediment cell (-1 elsewhere), as in the videos."""
+    order = {code: k % len(SEDIMENT_COLORS)
+             for k, code in enumerate(sorted(LAYER_ROLES.get("sediments", [])))}  # fmt: skip
+    lookup = np.full(int(m["sed_layer"].max()) + 1, -1, dtype=np.int8)
+    for code, band in order.items():
+        if code < lookup.size:
+            lookup[code] = band
+    bands = lookup[m["sed_layer"]]
+    bands[m["role"] != ROLES.index("sediments")] = -1
+    return bands
 
 
-def plot_units(ax, units, faults, extent, stripes=None):
+def plot_units(ax, units, faults, extent, bands=None):
     """Lithology in the colours of the videos, with the faults shaded on top."""
     ax.imshow(units, extent=extent, aspect="auto", cmap=UNITS_CMAP, vmin=-0.5,
               vmax=len(UNITS) - 0.5, interpolation="nearest")  # fmt: skip
-    if stripes is not None and stripes.any():  # alternate shades of the sediment layers
-        ax.imshow(np.where(stripes, 1.0, np.nan), extent=extent, aspect="auto", cmap="Greys",
-                  vmin=0, vmax=8, interpolation="nearest", alpha=0.6)  # fmt: skip
+    if bands is not None and (bands >= 0).any():  # deposited sediment layers in bands of colour
+        ax.imshow(np.where(bands >= 0, bands, np.nan), extent=extent, aspect="auto",
+                  cmap=plt.matplotlib.colors.ListedColormap(SEDIMENT_COLORS), vmin=-0.5,
+                  vmax=len(SEDIMENT_COLORS) - 0.5, interpolation="nearest")  # fmt: skip
     faults = np.nan_to_num(np.clip(faults, 0, 1))
     ax.imshow(faults, extent=extent, aspect="auto", cmap=FAULTS_CMAP, vmin=0, vmax=1,
               alpha=0.9 * faults, interpolation="nearest")  # fmt: skip
@@ -680,7 +655,7 @@ print(f"serpentinized area: {model['serp'].sum() * DX**2 / 1e6:.0f} km² (equiva
 
 fig, axes = plt.subplots(4, 1, figsize=(11, 11), sharex=True, layout="constrained")
 plot_units(axes[0], lithology_units(model)[::4, ::4], model["faults"][::4, ::4], extent,
-           sediment_stripes(model)[::4, ::4])  # fmt: skip
+           sediment_bands(model)[::4, ::4])  # fmt: skip
 for ax, field, title, cmap in zip(
     axes[1:],
     [model["serp"], model["faults"], model["vp"] / 1e3],
@@ -1108,7 +1083,7 @@ def depth_to_time_nearest(field, twt, time, fill=-1):
 
 # Lithology of the zoom in TWT, aligned with the sections
 units_time = depth_to_time_nearest(lithology_units(zoom), twt_zoom, tz)
-stripes_time = depth_to_time_nearest(sediment_stripes(zoom).astype(np.int8), twt_zoom, tz) == 1
+bands_time = depth_to_time_nearest(sediment_bands(zoom), twt_zoom, tz)
 faults_time = depth_to_time(zoom["faults"], twt_zoom, tz)
 keep = (tz >= tlim[0]) & (tz <= tlim[1])
 # The TWT-depth relation changes along x: the depth axis on the right uses the
@@ -1119,7 +1094,7 @@ zoom_depth_km = zoom["depth"] / 1e3
 
 def plot_lithology(ax):
     plot_units(ax, units_time[keep], faults_time[keep],
-               [XZ0 / 1e3, XZ1 / 1e3, tz[keep][-1], tz[keep][0]], stripes_time[keep])  # fmt: skip
+               [XZ0 / 1e3, XZ1 / 1e3, tz[keep][-1], tz[keep][0]], bands_time[keep])  # fmt: skip
     ax.set_ylabel("TWT [s]")
     ax.set_xlabel("x [km]")
     right = ax.secondary_yaxis(
@@ -1158,7 +1133,7 @@ grid = fig.add_gridspec(4, 1, height_ratios=[0.6, 1, 1, 1])
 # Whole model in depth, with the zoom window
 ax_model = fig.add_subplot(grid[0])
 plot_units(ax_model, lithology_units(model)[::4, ::4], model["faults"][::4, ::4], extent,
-           sediment_stripes(model)[::4, ::4])  # fmt: skip
+           sediment_bands(model)[::4, ::4])  # fmt: skip
 ax_model.add_patch(plt.Rectangle((XZ0 / 1e3, 0), (XZ1 - XZ0) / 1e3, ZZMAX / 1e3,
                                  fill=False, ec="k", ls="--", lw=0.8))  # fmt: skip
 ax_model.set_ylabel("Depth [km]")

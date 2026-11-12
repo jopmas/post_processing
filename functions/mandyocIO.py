@@ -278,6 +278,98 @@ def _code_around_layer(lithology, code, air_code, thickness=3):
     values, counts = np.unique(lithology[around], return_counts=True)
     return int(values[np.argmax(counts)])
 
+#Roles of the layers (see get_layer_roles) and their colors
+ROLES = ['asthenosphere', 'lithospheric mantle', 'lower crust', 'upper crust', 'basalt', 'sediments', 'water', 'air']
+ROLE_COLORS = {'asthenosphere': COLOR_AST, 'lithospheric mantle': COLOR_LIT, 'lower crust': COLOR_LC,
+               'upper crust': COLOR_UC, 'basalt': COLOR_BAS, 'sediments': COLOR_SED, 'water': COLOR_WATER,
+               'air': COLOR_AIR}
+
+#Colors of the deposited sediment layers (one Mandyoc code per time interval of the surface processes), used in
+#cycle from the oldest code: yellow, brown, ochre and orange bands show the stratigraphy
+SEDIMENT_COLORS = [(242./cr, 212./cr, 74./cr), (156./cr, 107./cr, 60./cr), (232./cr, 190./cr, 90./cr),
+                   (214./cr, 140./cr, 64./cr)]
+
+#Role of a layer from its name in infos_*.txt: the first keyword found in the name gives the role
+LAYER_NAME_ROLES = [('air', 'air'), ('water', 'water'), ('sediment', 'sediments'), ('basin', 'sediments'),
+                    ('basalt', 'basalt'), ('oceanic_crust', 'basalt'), ('magma', 'basalt'),
+                    ('asthenosphere', 'asthenosphere'), ('lithospher', 'lithospheric mantle'),
+                    ('craton', 'lithospheric mantle'), ('lower_crust', 'lower crust'),
+                    ('upper_crust', 'upper crust'), ('decol', 'upper crust')]
+
+def _read_sediment_codes(model_path):
+    '''Layer codes of the sediments from SP_vc.txt of Mandyoc (time, code, ... per line). Empty if there is no file.'''
+    text = _read_scenario_text(model_path, 'SP_vc.txt')
+    if(text is None):
+        return set()
+    return {int(float(line.split()[1])) for line in text.splitlines() if len(line.split()) > 1}
+
+def layer_roles(densities, names=(), sediment_codes=()):
+    '''
+    Role of each Mandyoc layer code, from the names of the layers or, without them, from the densities.
+
+    Parameters
+    ----------
+    densities: list
+        Density of each layer [kg/m3] (order of interfaces.txt, 0 = bottom layer).
+
+    names: list
+        Names of the layers (infos_*.txt). A name with a keyword of LAYER_NAME_ROLES gives the role.
+
+    sediment_codes: set
+        Codes of the sediments (SP_vc.txt).
+
+    Returns
+    -------
+    roles: dict
+        {role: [codes]}, with the roles of ROLES. Without a name, the role is, in this order: sediments for the
+        codes of sediment_codes; air below 500 kg/m3, water below 1200, sediments below 2550, mantle from 3200
+        (code 0 is the asthenosphere), lower crust from 2750 or, above an upper crust layer, basalt (extracted magma
+        sits on top of the crust); upper crust otherwise.
+    '''
+    roles, above_upper_crust = {}, False
+    for code, rho in enumerate(densities):
+        name = names[code].lower() if code < len(names) else ''
+        role = next((r for keyword, r in LAYER_NAME_ROLES if keyword in name), None)
+        if(role is None and code in sediment_codes):
+            role = 'sediments'
+        if(role is None):
+            if(rho < 500.0):
+                role = 'air'
+            elif(rho < 1200.0):
+                role = 'water'
+            elif(rho < 2550.0):
+                role = 'sediments'
+            elif(rho >= 3200.0):
+                role = 'asthenosphere' if code == 0 else 'lithospheric mantle'
+            elif(rho >= 2750.0):
+                role = 'basalt' if above_upper_crust else 'lower crust'
+            else:
+                role = 'upper crust'
+        above_upper_crust |= (role == 'upper crust')
+        roles.setdefault(role, []).append(code)
+    return roles
+
+def get_layer_roles(model_path):
+    '''
+    Role of each Mandyoc layer code of the scenario (asthenosphere, lithospheric mantle, lower crust, upper crust,
+    basalt, sediments, water, air), from the names of the layers in infos_*.txt, the sediment codes in SP_vc.txt and
+    the densities in interfaces.txt (see layer_roles).
+
+    Parameters
+    ----------
+    model_path: str
+        Path to the scenario directory.
+
+    Returns
+    -------
+    roles: dict
+        {role: [codes]}.
+    '''
+    densities = _read_densities_from_interfaces(model_path)
+    layers = _read_layers_from_infos(model_path)
+    names = [name for name, rho in layers] if len(layers) == len(densities) else []
+    return layer_roles(densities, names, _read_sediment_codes(model_path))
+
 def _auto_lithology_colors(model_path):
     '''Colors of the layer codes from the names of the layers (colors of the SVG or LAYER_NAME_COLORS), the number of layers, the densities in interfaces.txt or in density.nc, in this order.'''
     with xr.open_dataset(f"{model_path}/lithology.nc") as dataset:
@@ -295,10 +387,21 @@ def _auto_lithology_colors(model_path):
                 colors[code] = colors[code_around] if code_around is not None else _color_from_layer(name, rho)
         return colors
 
+    #Scenarios with surface processes (sediments) or a water layer: colors from the roles of the layers. The other
+    #scenarios keep the colors from the number of layers or from the densities below.
+    densities = _read_densities_from_interfaces(model_path)
+    has_water = any(500.0 <= rho < 1200.0 for rho in densities)
+    if(len(densities) >= number_of_layers and (has_water or len(_read_sediment_codes(model_path)) > 0)):
+        roles = get_layer_roles(model_path)
+        role_of_code = {code: role for role, codes in roles.items() for code in codes}
+        colors = [ROLE_COLORS[role_of_code[code]] for code in range(len(densities))]
+        for k, code in enumerate(sorted(roles.get('sediments', []))): #bands of SEDIMENT_COLORS
+            colors[code] = SEDIMENT_COLORS[k % len(SEDIMENT_COLORS)]
+        return colors
+
     if(number_of_layers in MODEL_FROM_NUMBER_OF_LAYERS):
         return LITHOLOGY_COLORS[MODEL_FROM_NUMBER_OF_LAYERS[number_of_layers]]
 
-    densities = _read_densities_from_interfaces(model_path)
     if(len(densities) == number_of_layers):
         return [_color_from_density(rho) for rho in densities]
 
