@@ -29,7 +29,7 @@ sys.path.append(os.path.abspath(path_to_functions))
 
 if '' in sys.path:
     sys.path.remove('')
-from functions.mandyocIO import change_dataset, plot_property, plot_lithology_legend, plot_tracked_particles, plot_ptt_paths_three_particles, plot_tracked_particles_depth_coded, plot_ptt_paths_depth_coded_frame, find_nearest, _extract_interface, get_lithology_colors, get_layer_codes
+from functions.mandyocIO import change_dataset, plot_property, plot_lithology_legend, plot_tracked_particles, plot_ptt_paths_three_particles, plot_tracked_particles_depth_coded, plot_ptt_paths_depth_coded_frame, find_nearest, _extract_interface, get_lithology_colors, get_layer_codes, get_lithosphere_thickness
 
 ####################################################################################################################################
 model_path = os.getcwd() # Get local file
@@ -62,6 +62,13 @@ if("4" in model_name and "0" in model_name):
     hcrust = 40.0e3 #m
 else:
     hcrust = 35.0e3 #m
+
+#thickness of the lithosphere (crust and lithospheric mantle): the lower lithospheric mantle of the depth-coded
+#particles goes down to it. From infos_*.txt (tapioca) or, without it, 120 km
+h_lithosphere = get_lithosphere_thickness(model_path)
+if(h_lithosphere is None):
+    h_lithosphere = 120.0e3 #m
+print(f"Thickness of the lithosphere: {h_lithosphere/1.0e3:.1f} km")
 
 if(plot_isotherms or plot_melt):
     clean_plot=False
@@ -203,15 +210,16 @@ if(layer_codes is not None):
 #  - exhumed lithospheric mantle: in each column, the lithospheric mantle cells (exhumed_mantle_codes) right below the  #
 #    air, i.e. the first non-air layer of the column is lithospheric mantle, down to the first cell of another layer;   #
 #    a thin crust on top (thin_crust_codes, thinner than max_thin_crust_elements elements) is ignored: the mantle right #
-#    below it is taken as exhumed;                                                                                      #
+#    below it is taken as exhumed. Pockets of air inside this crust (gaps of the particles near the surface) are part   #
+#    of it, but do not count in its thickness;                                                                          #
 #  - the columns where its thickness is larger than min_exhumed_elements elements of the Mandyoc mesh (dz) are kept;    #
 #  - a particle is exhumed if its final position is in the exhumed lithospheric mantle of these columns.                #
 # The P-T-t paths and the particles of the frames are plotted only for these particles.                                  #
 ##########################################################################################################################
 
-min_exhumed_elements = 6 #minimum thickness of the exhumed lithospheric mantle [elements of the mesh]
+min_exhumed_elements = 3 #minimum thickness of the exhumed lithospheric mantle [elements of the mesh]
 exhumed_mantle_codes = [mantle_lithosphere1_code, seed_code, mantle_lithosphere2_code] #layers of the lithospheric mantle
-max_thin_crust_elements = 4 #crust on top of the mantle thinner than this [elements of the mesh] is ignored (0: the mantle must be right below the air)
+max_thin_crust_elements = 16 #crust on top of the mantle thinner than this [elements of the mesh] is ignored (0: the mantle must be right below the air)
 thin_crust_codes = [upper_crust_code] #layers of the thin crust that can be ignored
 
 def filter_trackdataset(trackdataset, cond):
@@ -272,9 +280,10 @@ is_mantle = np.isin(litho_top, exhumed_mantle_codes)
 
 #thin crust on top of the mantle: the mantle starts below it
 is_thin_crust = np.isin(litho_top, thin_crust_codes)
-end_crust = end_of_layers(is_thin_crust, first_rock) #first cell below the crust on top
+end_crust = end_of_layers(is_thin_crust | (litho_top == air_code), first_rock) #first cell below the crust on top (and its pockets of air)
+thin_crust_thickness = np.sum(is_thin_crust & (rows >= first_rock) & (rows < end_crust), axis=0)*dzl #m, without the air
 thin_crust = (is_thin_crust[first_rock, columns]
-              & ((end_crust - first_rock)*dzl < max_thin_crust_elements*dz_mesh)
+              & (thin_crust_thickness < max_thin_crust_elements*dz_mesh)
               & is_mantle[np.clip(end_crust, 0, Nzl-1), columns]
               & (end_crust < Nzl))
 top_mantle = np.where(thin_crust, end_crust, first_rock) #first cell of the exhumed mantle
@@ -522,10 +531,10 @@ with pymp.Parallel() as p:
                 linewidth = 0.3
                 markersize = 8
 
-                plot_tracked_particles_depth_coded(trackdataset, axs[0,0], i, hcrust=hcrust, markersize=4,
+                plot_tracked_particles_depth_coded(trackdataset, axs[0,0], i, hcrust=hcrust, h_lithosphere=h_lithosphere, markersize=4,
                                                    plot_lower_crust_particles=False, plot_mantle_lithosphere_particles=True, plot_asthenosphere_particles=True,
                                                    color_mlit_upper=color_mlit_upper, color_mlit_intermediate=color_mlit_intermediate, color_mlit_lower=color_mlit_lower, layer_codes=layer_codes)
-                plot_ptt_paths_depth_coded_frame(trackdataset, axs[0,1], i, current_time, hcrust=hcrust, alpha_lines=0.3, markersize=markersize, linewidth=linewidth,
+                plot_ptt_paths_depth_coded_frame(trackdataset, axs[0,1], i, current_time, hcrust=hcrust, h_lithosphere=h_lithosphere, alpha_lines=0.3, markersize=markersize, linewidth=linewidth,
                                                  plot_lower_crust_particles=False, plot_mantle_lithosphere_particles=True, plot_asthenosphere_particles=True,
                                                  color_mlit_upper=color_mlit_upper, color_mlit_intermediate=color_mlit_intermediate, color_mlit_lower=color_mlit_lower,
                                                  plot_steps=False,

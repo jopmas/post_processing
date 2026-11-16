@@ -38,13 +38,32 @@ Input files: `strain.nc`, `temperature.nc`, `density.nc`, `lithology.nc` (and `P
 
 | Variable | Meaning |
 | --- | --- |
-| `plot_depth_coded` | Particles colored by their initial depth in the lithospheric mantle (upper, intermediate, lower). |
+| `plot_depth_coded` | Particles colored by their initial depth in the lithospheric mantle: upper (30 km below the crust), intermediate (the next 30 km) and lower (down to the base of the lithosphere). |
+| `hcrust` | Thickness of the crust (40 km if the model name has `4` and `0`, else 35 km). |
+| `h_lithosphere` | Thickness of the lithosphere (crust and lithospheric mantle): from `lithosphere: ... km` in `infos_*.txt` (`get_lithosphere_thickness`) or, without it, 120 km. |
 | `plot_three_particles` | Only the coldest, the hottest and an intermediate particle. |
 | `plot_melt` | Melt (`Phi`) and incremental melt (`dPhi`). |
 | `properties` | Fields to plot (`lithology` by default; other fields use `plot_property`). |
 | `xlims`, `ylims` | Limits of the zoom [km]. |
 
 Frames: `_output/<model>_<plot_type>_<property>_and_PTt_<step>.png`.
+
+## `plot_PTT_frames_rft2.py`
+
+As `plot_PTT_frames_rft.py`, but only with the particles exhumed with the lithospheric mantle. In the last step of
+the tracking (`lithology.nc`), the exhumed lithospheric mantle of a column is the mantle right below the air or
+below an upper crust thinner than `max_thin_crust_elements` (pockets of air inside this crust are part of it, but do
+not count in its thickness). The columns where it is thicker than `min_exhumed_elements` are kept, and a particle is
+kept if its final position is in this mantle.
+
+| Variable | Meaning |
+| --- | --- |
+| `min_exhumed_elements` | Minimum thickness of the exhumed lithospheric mantle [elements of the mesh, dz]. |
+| `max_thin_crust_elements` | Upper crust on top of the mantle thinner than this is ignored [elements of the mesh, dz]; 0: the mantle must be right below the air. |
+| `thin_crust_codes` | Layers of this thin crust (`[upper_crust_code]`). |
+| `exhumed_mantle_codes` | Layers of the lithospheric mantle (with the seed). |
+
+Frames: `_output/<model>_<plot_type>_exhumed_<property>_and_PTt_<step>.png`.
 
 ## `frames_generator.py`
 

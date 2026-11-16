@@ -229,6 +229,30 @@ def get_velocity(model_path):
 
     return _velocity_from_input_velocity(model_path)
 
+def get_lithosphere_thickness(model_path):
+    '''
+    Thickness of the lithosphere (crust and lithospheric mantle) of the model, used by the functions that plot the
+    tracked particles colored by their initial depth (h_lithosphere).
+
+    Parameters
+    ----------
+    model_path: str
+        Path to the scenario directory.
+
+    Returns
+    -------
+    h_lithosphere: float or None
+        Thickness [m] from "lithosphere: ... km" in infos_*.txt (tapioca), read from the scenario directory or from its
+        inputs_*.zip. None if there is no infos_*.txt or it has no thickness of the lithosphere.
+    '''
+    text = _read_scenario_text(model_path, 'infos_*.txt')
+    if(text is not None):
+        match = re.search(r'^\s*lithosphere:\s*(\S+)\s*km', text, flags=re.MULTILINE)
+        if(match):
+            return float(match.group(1))*1.0e3
+
+    return None
+
 def _read_colors_from_svg(model_path):
     '''{name of the layer: fill color} of the shapes of the SVG of the scenario (inkscape:label, or the id). Empty if there is no SVG.'''
     text = _read_scenario_text(model_path, '*.svg')
@@ -1220,7 +1244,7 @@ def plot_tracked_particles(trackdataset, ax, i, plot_other_particles=False, colo
                 ax.plot(x_track[i, particle]/1.0e3, z_track[i, particle]/1.0e3+h_air, '.', color='xkcd:violet', markersize=markersize-6, zorder=60)
 
 
-def plot_tracked_particles_depth_coded(trackdataset, ax, i, hcrust=35.0e3, markersize=4,
+def plot_tracked_particles_depth_coded(trackdataset, ax, i, hcrust=35.0e3, h_lithosphere=120.0e3, markersize=4,
                                        plot_lower_crust_particles=False, plot_mantle_lithosphere_particles=True, plot_asthenosphere_particles=True,
                                        color_lower_crust='xkcd:brown',
                                        color_mlit_upper='xkcd:cerulean blue', color_mlit_intermediate='xkcd:scarlet', color_mlit_lower='xkcd:dark green', particles_alpha=0.7, layer_codes=None):
@@ -1237,6 +1261,9 @@ def plot_tracked_particles_depth_coded(trackdataset, ax, i, hcrust=35.0e3, marke
         Index of the current step
     hcrust : float
         Crustal thickness in m
+    h_lithosphere : float
+        Thickness of the lithosphere (crust and lithospheric mantle) in m (see get_lithosphere_thickness). The lower
+        lithospheric mantle goes from the bottom of the intermediate one down to this depth
     markersize : float
         Size of the markers
     plot_lower_crust_particles : bool
@@ -1287,7 +1314,6 @@ def plot_tracked_particles_depth_coded(trackdataset, ax, i, hcrust=35.0e3, marke
     # color_mlit_lower = 'xkcd:violet'
 
     h_air = 40.0e3 #m
-    h_lithosphere = 120.0e3 #m
     #thickness of mantle lithosphere sections
     thickness_upper = 30.0e3
     thickness_intermediate = 30.0e3
@@ -1375,7 +1401,7 @@ def plot_tracked_particles_depth_coded(trackdataset, ax, i, hcrust=35.0e3, marke
                 ax.plot(x_track[i, particle]/1.0e3, z_track[i, particle]/1.0e3+h_air/1.0e3, '.', color=color_mlit_lower, markersize=markersize, zorder=60, alpha=particles_alpha)
 
 
-def plot_ptt_paths_depth_coded_frame(trackdataset, ax, i, current_time, hcrust=35.0e3, alpha_lines=1.0, markersize=6, linewidth=0.35,
+def plot_ptt_paths_depth_coded_frame(trackdataset, ax, i, current_time, hcrust=35.0e3, h_lithosphere=120.0e3, alpha_lines=1.0, markersize=6, linewidth=0.35,
                                      plot_lower_crust_particles=False, plot_mantle_lithosphere_particles=True, plot_asthenosphere_particles=True,
                                      color_lower_crust='xkcd:brown',
                                      color_mlit_upper='xkcd:cerulean blue', color_mlit_intermediate='xkcd:scarlet', color_mlit_lower='xkcd:dark green',
@@ -1394,6 +1420,11 @@ def plot_ptt_paths_depth_coded_frame(trackdataset, ax, i, current_time, hcrust=3
         Current step index to plot the PTt path
     current_time : float
         Current time to plot the PTt path
+    hcrust : float
+        Crustal thickness in m
+    h_lithosphere : float
+        Thickness of the lithosphere (crust and lithospheric mantle) in m (see get_lithosphere_thickness). The lower
+        lithospheric mantle goes from the bottom of the intermediate one down to this depth
     plot_lower_crust_particles : bool
         Whether to plot lower crust particles
     plot_mantle_lithosphere_particles : bool
@@ -1444,7 +1475,6 @@ def plot_ptt_paths_depth_coded_frame(trackdataset, ax, i, current_time, hcrust=3
     # color_mlit_lower = 'xkcd:violet'
 
     h_air = 40.0e3 #m
-    h_lithosphere = 120.0e3 #m
     #thickness of mantle lithosphere sections
     thickness_upper = 30.0e3
     thickness_intermediate = 30.0e3

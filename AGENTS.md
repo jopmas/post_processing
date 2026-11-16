@@ -12,8 +12,10 @@ Scripts and notebooks to post-process Mandyoc models from the NetCDF files creat
   `_track_xzPT_all_steps.nc` (temperature-coded for double keel, depth-coded for rifting), videos and gifs.
 - `plot_PTT_frames_rft2.py`: as `plot_PTT_frames_rft.py`, but only with the particles that, in the last step of the
   tracking, are in exhumed lithospheric mantle (mantle right below the air in `lithology.nc`, ignoring an upper crust
-  on top thinner than `max_thin_crust_elements` elements) thicker than `min_exhumed_elements` elements (dz of the
-  Mandyoc mesh) in its column. Outputs with `plot_type` `*_exhumed`.
+  on top thinner than `max_thin_crust_elements` elements, with its pockets of air) thicker than `min_exhumed_elements`
+  elements (dz of the Mandyoc mesh) in its column. Outputs with `plot_type` `*_exhumed`. Both rifting scripts color
+  the particles by their initial depth down to the base of the lithosphere (`get_lithosphere_thickness`, 120 km
+  without `infos_*.txt`).
 - `frames_generator.py`: frames of the lithology, strain, isotherms and melt (accordion, rifting and double keel
   models, `lithology_colors = 'auto'`). `properties` defaults to `['lithology']`; the other properties are plotted
   with `plot_property` (one set of frames, video and gif per property).

@@ -85,6 +85,7 @@ For scenarios with sediments or a water layer, `'auto'` uses the roles of the la
 .. autosummary::
    :toctree: ../generated/
 
+    get_lithosphere_thickness
     plot_tracked_particles
     plot_tracked_particles_depth_coded
     plot_ptt_paths_depth_coded_frame

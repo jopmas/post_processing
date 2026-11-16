@@ -108,9 +108,10 @@ They read `_track_xzPT_all_steps.nc` (`trackdataset`) and plot the time index `i
 
 - `plot_tracked_particles(trackdataset, ax, i, ...)` and `plot_ptt_paths_three_particles(trackdataset, ax, i, current_time, ...)`:
   the coldest, the hottest and an intermediate particle of the lithospheric mantle.
-- `plot_tracked_particles_depth_coded(trackdataset, ax, i, hcrust, ...)` and
-  `plot_ptt_paths_depth_coded_frame(trackdataset, ax, i, current_time, hcrust, ...)`: particles colored by their
-  initial depth in the lithospheric mantle (upper, intermediate, lower).
+- `plot_tracked_particles_depth_coded(trackdataset, ax, i, hcrust, h_lithosphere, ...)` and
+  `plot_ptt_paths_depth_coded_frame(trackdataset, ax, i, current_time, hcrust, h_lithosphere, ...)`: particles colored
+  by their initial depth in the lithospheric mantle (upper, intermediate, lower, down to `h_lithosphere`, from
+  `get_lithosphere_thickness`).
 
 ## Helpers
 

@@ -29,7 +29,7 @@ sys.path.append(os.path.abspath(path_to_functions))
 
 if '' in sys.path:
     sys.path.remove('')
-from functions.mandyocIO import change_dataset, plot_property, plot_lithology_legend, plot_tracked_particles, plot_ptt_paths_three_particles, plot_tracked_particles_depth_coded, plot_ptt_paths_depth_coded_frame, find_nearest, _extract_interface, get_lithology_colors, get_layer_codes
+from functions.mandyocIO import change_dataset, plot_property, plot_lithology_legend, plot_tracked_particles, plot_ptt_paths_three_particles, plot_tracked_particles_depth_coded, plot_ptt_paths_depth_coded_frame, find_nearest, _extract_interface, get_lithology_colors, get_layer_codes, get_lithosphere_thickness
 
 ####################################################################################################################################
 model_path = os.getcwd() # Get local file
@@ -62,6 +62,13 @@ if("4" in model_name and "0" in model_name):
     hcrust = 40.0e3 #m
 else:
     hcrust = 35.0e3 #m
+
+#thickness of the lithosphere (crust and lithospheric mantle): the lower lithospheric mantle of the depth-coded
+#particles goes down to it. From infos_*.txt (tapioca) or, without it, 120 km
+h_lithosphere = get_lithosphere_thickness(model_path)
+if(h_lithosphere is None):
+    h_lithosphere = 120.0e3 #m
+print(f"Thickness of the lithosphere: {h_lithosphere/1.0e3:.1f} km")
 
 if(plot_isotherms or plot_melt):
     clean_plot=False
@@ -411,10 +418,10 @@ with pymp.Parallel() as p:
                 linewidth = 0.3
                 markersize = 8
 
-                plot_tracked_particles_depth_coded(trackdataset, axs[0,0], i, hcrust=hcrust, markersize=4,
+                plot_tracked_particles_depth_coded(trackdataset, axs[0,0], i, hcrust=hcrust, h_lithosphere=h_lithosphere, markersize=4,
                                                    plot_lower_crust_particles=False, plot_mantle_lithosphere_particles=True, plot_asthenosphere_particles=True,
                                                    color_mlit_upper=color_mlit_upper, color_mlit_intermediate=color_mlit_intermediate, color_mlit_lower=color_mlit_lower, layer_codes=layer_codes)
-                plot_ptt_paths_depth_coded_frame(trackdataset, axs[0,1], i, current_time, hcrust=hcrust, alpha_lines=0.3, markersize=markersize, linewidth=linewidth,
+                plot_ptt_paths_depth_coded_frame(trackdataset, axs[0,1], i, current_time, hcrust=hcrust, h_lithosphere=h_lithosphere, alpha_lines=0.3, markersize=markersize, linewidth=linewidth,
                                                  plot_lower_crust_particles=False, plot_mantle_lithosphere_particles=True, plot_asthenosphere_particles=True,
                                                  color_mlit_upper=color_mlit_upper, color_mlit_intermediate=color_mlit_intermediate, color_mlit_lower=color_mlit_lower,
                                                  plot_steps=False,
