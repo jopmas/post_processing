@@ -18,7 +18,9 @@ Scripts and notebooks to post-process Mandyoc models from the NetCDF files creat
   without `infos_*.txt`).
 - `frames_generator.py`: frames of the lithology, strain, isotherms and melt (accordion, rifting and double keel
   models, `lithology_colors = 'auto'`). `properties` defaults to `['lithology']`; the other properties are plotted
-  with `plot_property` (one set of frames, video and gif per property).
+  with `plot_property` (one set of frames, video and gif per property). `plot_melt = 'auto'` plots the melt only if
+  the model has it. The options `--prop`, `--plot-melt`/`--no-plot-melt`, `--xlims` and `--ylims` override the
+  settings of the script (`--help`).
 - `plot_snapshots.py`: snapshots of the scenario (equally spaced steps from the first to the last one) with
   `plot_property`, based on `Geometries.ipynb` without the measurements of the crust.
 - `pipeline.sh`: from the zip of a scenario: extraction, `0_organize_outputs.sh`, `meshes2netcdf.jl` and

@@ -4,6 +4,7 @@
 import os
 import gc
 import sys
+import argparse
 import multiprocessing #needed to run pymp in mac
 import psutil
 multiprocessing.set_start_method('fork') #needed to run pymp in mac 
@@ -35,6 +36,19 @@ if '' in sys.path:
 from functions.mandyocIO import change_dataset, plot_property, plot_lithology_legend, get_lithology_colors, read_tapioca_datasets, get_layer_roles, _legend_colors, COLOR_SED
 
 ####################################################################################################################################
+#Options of the command line: the settings below are used for the options that are not given
+#e.g. python frames_generator.py --prop lithology temperature --plot-melt --xlims 600 1200 --ylims -150 40
+PROPERTIES = ['lithology', 'density', 'radiogenic_heat', 'pressure', 'strain', 'strain_rate', 'temperature',
+              'temperature_anomaly', 'surface', 'viscosity']
+parser = argparse.ArgumentParser(description="Frames, video and gif of a Mandyoc model converted by tapioca (run in the folder of the scenario).")
+parser.add_argument('--prop', nargs='+', choices=PROPERTIES, metavar='PROP',
+                    help=f"properties to plot (default: properties of the script). Options: {', '.join(PROPERTIES)}")
+parser.add_argument('--plot-melt', action=argparse.BooleanOptionalAction, default=None,
+                    help="plot (--plot-melt) or not (--no-plot-melt) the melt (default: plot_melt of the script, 'auto': only if the model has melt)")
+parser.add_argument('--xlims', nargs=2, type=float, metavar=('XMIN', 'XMAX'), help="horizontal limits [km] (default: the whole model)")
+parser.add_argument('--ylims', nargs=2, type=float, metavar=('ZMIN', 'ZMAX'), help="vertical limits [km], 0 at the initial surface and 40 at the top of the air (default: the whole model)")
+args = parser.parse_args()
+
 model_path = os.getcwd() # Get local file
 model_name = model_path.split('/')[-1]
 output_path = '_output'
@@ -48,9 +62,25 @@ if not os.path.isdir(output_path):
 
 plot_isotherms = True
 # plot_isotherms = False
-plot_melt = True
+plot_melt = 'auto' #only if the model has melt (Phi.nc and dPhi.nc, with melt in the last step), see model_has_melt
+# plot_melt = True
 # plot_melt = False
 plot_particles=False
+
+def model_has_melt(model_path):
+    '''True if the model has Phi.nc and dPhi.nc (tapioca) and melt (Phi > 0 out of the air) in the last step'''
+    if not (os.path.isfile(f"{model_path}/Phi.nc") and os.path.isfile(f"{model_path}/dPhi.nc")):
+        return False
+    with xr.open_dataset(f"{model_path}/Phi.nc") as melt_file, xr.open_dataset(f"{model_path}/density.nc") as density_file:
+        melt_last = melt_file["Phi"].isel(time=-1).values
+        air = density_file["density"].isel(time=-1).values < 1200.0 #tapioca keeps the values in the air
+    return bool(np.nanmax(np.where(air, 0.0, melt_last)) > 0.0)
+
+if(args.plot_melt is not None):
+    plot_melt = args.plot_melt
+if(plot_melt == 'auto'):
+    plot_melt = model_has_melt(model_path)
+    print(f"Melt: {'found, plotting it' if plot_melt else 'not found (no Phi.nc/dPhi.nc or no melt), not plotting it'}")
 
 
 if("4" in model_name and "0" in model_name):
@@ -88,6 +118,9 @@ properties = [#Properties from mandyoc. Comment/uncomment to select which ones y
              ]
 #'lithology' is plotted by this script; the other properties are plotted with plot_property (functions/mandyocIO.py),
 #reading <property>.nc (heat.nc for radiogenic_heat). One set of frames, video and gif per property.
+if(args.prop is not None):
+    properties = list(dict.fromkeys(args.prop))
+print(f"Properties: {properties}")
 
 #######################################################
 # Read ascii outputs and save them as xarray.Datasets #
@@ -277,9 +310,14 @@ isotherms = [500, 600, 700, 800, 900, 1300] #oC
 
 xlims = [0, Lx/1000]
 ylims = [-Lz/1000+40, 0+40]
-# xlims = [1600, 2200]
+# xlims = [350, 900]
 # ylims = [-150, 40]
 ylims_surface = [-6, 6] #km, topography (prop = 'surface')
+if(args.xlims is not None):
+    xlims = list(args.xlims)
+if(args.ylims is not None):
+    ylims = list(args.ylims)
+print(f"xlims: {xlims} km, ylims: {ylims} km")
 
 def frame_prefix(prop):
     '''Prefix of the frames, video and gif of prop: _output/<model>_<prop>[_MeltFrac]'''

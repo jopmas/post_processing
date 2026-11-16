@@ -67,7 +67,7 @@ Frames: `_output/<model>_<plot_type>_exhumed_<property>_and_PTt_<step>.png`.
 
 ## `frames_generator.py`
 
-Accordion, rifting and double keel models (used by the [pipeline](pipeline.md) for the video). Each frame has the lithology, the strain, the isotherms and, with `plot_melt`, the
+Accordion, rifting and double keel models (used by the [pipeline](pipeline.md) for the video). Each frame has the lithology, the strain, the isotherms and, if the model has melt, the
 melt.
 
 Input files: `strain.nc`, `lithology.nc`, `temperature.nc`, `density.nc` (and `Phi.nc`, `dPhi.nc`; `surface.nc` for the properties other than the lithology).
@@ -79,7 +79,25 @@ Input files: `strain.nc`, `lithology.nc`, `temperature.nc`, `density.nc` (and `P
 | `properties` | Properties to plot (default `['lithology']`). `'lithology'` is plotted by the script; the others (`'density'`, `'radiogenic_heat'`, `'pressure'`, `'strain'`, `'strain_rate'`, `'temperature'`, `'temperature_anomaly'`, `'surface'`, `'viscosity'`) with `plot_property`, from `<property>.nc` (`heat.nc` for `radiogenic_heat`). One set of frames, video and gif per property. |
 | `plot_isotherms` | Isotherms (`isotherms`). |
 | `topo_from_density` | Air/crust interface of the properties plotted with `plot_property`: `False` (default) from `surface.nc` (from `density.nc` if there is no `surface.nc`), `True` from `density.nc`. |
-| `plot_melt` | Melt and incremental melt. |
+| `plot_melt` | Melt and incremental melt: `'auto'` (default) only if the model has `Phi.nc` and `dPhi.nc` and melt in the last step, `True` or `False`. |
+| `xlims`, `ylims` | Limits of the frames [km] (default: the whole model; `ylims` with 0 at the initial surface and 40 at the top of the air). |
 | `fig_format` | Format of the frames (`jpeg`). |
+
+Options of the command line, for the settings that change from a run to another. Without them, the script uses
+the settings above:
+
+| Option | Setting |
+| --- | --- |
+| `--prop PROP [PROP ...]` | `properties` |
+| `--plot-melt`, `--no-plot-melt` | `plot_melt` (`True`, `False`) |
+| `--xlims XMIN XMAX` | `xlims` [km] |
+| `--ylims ZMIN ZMAX` | `ylims` [km] |
+
+```bash
+python ~/opt/post_processing/frames_generator.py                                   # settings of the script
+python ~/opt/post_processing/frames_generator.py --prop lithology temperature --no-plot-melt
+python ~/opt/post_processing/frames_generator.py --xlims 600 1200 --ylims -150 40  # zoom
+python ~/opt/post_processing/frames_generator.py --help
+```
 
 Frames: `_output/<model>_<property>[_MeltFrac]_<step>.jpeg`.
