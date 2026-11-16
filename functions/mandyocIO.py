@@ -570,6 +570,216 @@ def plot_lithology_legend(ax, colors, vmin=-0.5, vmax=0.7, alpha=0.2, position=(
 
     return bv1
 
+def plot_strain_legend(ax, vmin=-0.5, vmax=0.9, alpha=0.2, position=(0.98, 0.2), loc='lower right',
+                       width=1.0, height=0.12, fsize=10):
+    '''
+    Plot the legend of the strain shading as an inset of ax: a bar with the log10(strain) shading over white. The size
+    of the bar is fixed in inches, so it is the same whatever the size of the figure. Only the position is relative to
+    ax.
+
+    Parameters
+    ----------
+    ax: `~matplotlib.axes.Axes`
+        Axis where the lithology is plotted.
+
+    vmin, vmax: float
+        Limits of the log10(strain) shading. Must be the same used to plot the strain.
+
+    alpha: float
+        Alpha transparency of the strain shading. Must be the same used to plot the strain.
+
+    position: tuple
+        (x, y) of the corner of the bar given by loc, in fraction of ax.
+
+    loc: str
+        Corner of the bar placed in position (e.g. 'lower right', 'lower left', 'upper right').
+
+    width, height: float
+        Size of the bar [inches].
+
+    fsize: int
+        Font size of the label and ticks.
+
+    Returns
+    -------
+    bar: `~matplotlib.axes.Axes`
+        Axis of the bar.
+    '''
+    bar = inset_axes(ax, width=width, height=height, loc=loc, bbox_to_anchor=position, bbox_transform=ax.transAxes,
+                     borderpad=0)
+    bar.set_facecolor('white')
+    shading = np.linspace(vmin, vmax, 100)
+    bar.imshow(shading[None, :], extent=[vmin, vmax, 0, 1], alpha=alpha, cmap='Greys', vmin=vmin, vmax=vmax, aspect='auto')
+    bar.set_xlabel(r"log$(\varepsilon_{II})$", size=fsize, labelpad=1)
+    bar.tick_params(axis='x', which='major', labelsize=fsize, pad=1)
+    bar.set_xticks(np.linspace(vmin, vmax, 3))
+    bar.set_yticks([])
+    bar.xaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+
+    return bar
+
+def _read_layers_properties_from_infos(model_path):
+    '''
+    (name, rheology, C, density) of the layers (0 = bottom layer) from infos_*.txt, written by tapioca. Empty if there
+    is no file. A line with a range of codes (the layers deposited by Mandyoc) gives one entry per code.
+    '''
+    text = _read_scenario_text(model_path, 'infos_*.txt')
+    if(text is None):
+        return []
+    layers = []
+    for first, last, name, rheology, rest in re.findall(r'^\s*(\d+)(?:-(\d+))?: (.+?) \((\S+)\): (.*)$', text, flags=re.MULTILINE):
+        C = re.search(r'\bC = (\S+?),', rest)
+        rho = re.search(r'\brho = (\S+) kg/m3', rest)
+        if(rho is None):
+            continue
+        layers += [(name, rheology, float(C.group(1)) if C else None, float(rho.group(1)))] * (int(last or first) - int(first) + 1)
+    return layers
+
+def _read_titles_from_svg(model_path):
+    '''{name of the layer: title} of the shapes of the SVG of the scenario (inkscape:label, or the id, and <title>). Empty if there is no SVG.'''
+    text = _read_scenario_text(model_path, '*.svg')
+    if(text is None):
+        return {}
+
+    titles = {}
+    for element in ElementTree.fromstring(text).iter():
+        name = element.get('{http://www.inkscape.org/namespaces/inkscape}label') or element.get('id')
+        title = element.find('{http://www.w3.org/2000/svg}title')
+        if(name is not None and title is not None and title.text and title.text.strip()):
+            titles.setdefault(name, title.text.strip())
+
+    return titles
+
+def _read_interfaces_parameter(model_path, key):
+    '''Values of the parameter key (e.g. C, rho) of the layers (0 = bottom layer) from interfaces.txt. Empty if there is no file.'''
+    text = _read_scenario_text(model_path, 'interfaces.txt')
+    if(text is None):
+        return []
+    line = re.search(rf'^{key}\s+(.*)$', text, flags=re.MULTILINE)
+    return [float(value) for value in line.group(1).split()] if line else []
+
+def get_layers_legend(model_path, colors, thickness=True):
+    '''
+    Legend entries of the layers of the scenario, as in the numerical setup of tapioca (numerical_setup.png): title,
+    scale factor and rheology, density and thickness of each layer, from top to bottom.
+
+    The layers are grouped by name (infos_*.txt) or, without infos_*.txt, by role (get_layer_roles). The titles are the
+    titles of the shapes in the SVG of the scenario (or the names). The weak seed is not in the legend. The thickness h
+    is measured in the first step of lithology.nc: bodies that do not reach both sides of the domain (e.g. a basin):
+    maximum thickness; bottom layer (asthenosphere): range of thickness along x; other layers: most common thickness
+    along x. The sediments deposited by Mandyoc (several codes) get COLOR_SED.
+
+    Parameters
+    ----------
+    model_path: str
+        Path to the scenario directory (lithology.nc, infos_*.txt, the SVG and interfaces.txt, these three also in its
+        inputs_*.zip or <model>.zip).
+
+    colors: list
+        One color per layer code (get_lithology_colors).
+
+    thickness: bool
+        Add the thickness h as the last line of each entry (True) or only the title, scale factor and rheology and
+        density (False, e.g. in the frames of the videos, where the layers change their thickness).
+
+    Returns
+    -------
+    handles: list
+        `~matplotlib.patches.Patch` of the layers, from top to bottom, with the properties as labels.
+    '''
+    from matplotlib.patches import Patch
+
+    with xr.open_dataset(f"{model_path}/lithology.nc") as dataset:
+        lithology = dataset.lithology.isel(time=0).values
+        dz = float(abs(dataset.z.values[1] - dataset.z.values[0])) / 1.0e3 #km
+    number_of_codes = len(colors)
+
+    sediment_codes = set(get_layer_roles(model_path).get('sediments', []))
+    layers = _read_layers_properties_from_infos(model_path)
+    if(len(layers) == number_of_codes):
+        titles = _read_titles_from_svg(model_path)
+        groups = {} #name: codes
+        for code, (name, rheology, C, rho) in enumerate(layers):
+            if('seed' not in name.lower()):
+                groups.setdefault(name, []).append(code)
+        def properties(name, codes):
+            name, rheology, C, rho = layers[codes[-1]]
+            title = titles.get(name, name.replace('_', ' ').capitalize())
+            scale = f"{C:g} x {rheology.replace('_', ' ')}" if C is not None else rheology.replace('_', ' ')
+            return title, scale, rho
+    else:
+        roles = get_layer_roles(model_path)
+        C_values = _read_interfaces_parameter(model_path, 'C')
+        densities = _read_interfaces_parameter(model_path, 'rho')
+        groups = {role: roles[role] for role in ROLES if role in roles}
+        def properties(role, codes):
+            C = [C_values[code] for code in codes if code < len(C_values)]
+            rho = [densities[code] for code in codes if code < len(densities)]
+            scale = f"C = {C[-1]:g}" if len(set(C)) == 1 else (f"C = {min(C):g}-{max(C):g}" if C else '')
+            return role.capitalize(), scale, (rho[-1] if rho else np.nan)
+
+    handles = []
+    for name, codes in reversed(list(groups.items())): #top to bottom
+        th = np.isin(lithology, codes).sum(axis=0) * dz #km, per column
+        deposited = len(codes) > 1 and set(codes) <= sediment_codes
+        if(th.max() <= 0):
+            if(not deposited):
+                continue #layer that is not in the model
+            h = 'deposited by Mandyoc'
+        elif(th[0] <= 0 or th[-1] <= 0): #body
+            h = f"{th.max():.0f} km"
+        elif(0 in codes and np.round(th.min()) != np.round(th.max())): #bottom layer
+            h = f"{th.min():.0f}-{th.max():.0f} km"
+        else:
+            values, counts = np.unique(np.round(th[th > 0]), return_counts=True)
+            h = f"{values[np.argmax(counts)]:.0f} km"
+
+        title, scale, rho = properties(name, codes)
+        lines = [title] + ([scale] if scale else []) + [fr"$\rho$ = {rho:.0f} kg/m³"]
+        if(thickness):
+            lines.append(f"$h$ = {h}")
+        label = "\n".join(lines)
+        color = COLOR_SED if deposited else colors[codes[-1]]
+        handles.append(Patch(facecolor=color, edgecolor='black', label=label))
+
+    return handles
+
+def layers_legend_layout(handles, width, fontsize=8, title_fontsize=12, dpi=100):
+    '''
+    Number of columns and height [inches] of the legend of the layers (plot_layers_legend) in a figure of the given
+    width [inches]: as few rows as fit in the width, with the entries spread evenly over the rows.
+
+    Returns
+    -------
+    ncol: int
+    height: float
+        Height of the legend [inches].
+    '''
+    fig = plt.figure(figsize=(width, 2), dpi=dpi)
+    renderer = fig.canvas.get_renderer()
+    for rows in range(1, len(handles) + 1):
+        ncol = int(np.ceil(len(handles) / rows))
+        legend = plot_layers_legend(fig, handles, ncol, fontsize=fontsize, title_fontsize=title_fontsize, loc='center')
+        bbox = legend.get_window_extent(renderer)
+        if(bbox.width <= 0.95 * width * dpi or ncol == 1):
+            break
+        legend.remove()
+    plt.close(fig)
+    return ncol, bbox.height / dpi
+
+def plot_layers_legend(fig, handles, ncol, fontsize=8, title_fontsize=12, loc='outside lower center'):
+    '''
+    Legend of the layers (get_layers_legend) below the axes of fig, with the title 'Layers properties'. With
+    loc='outside lower center' the constrained layout of fig makes room for it: give the figure the height of the
+    legend (layers_legend_layout) besides the height of the axes.
+
+    Returns
+    -------
+    legend: `~matplotlib.legend.Legend`
+    '''
+    return fig.legend(handles=handles, ncol=ncol, loc=loc, frameon=False, title='Layers properties',
+                      title_fontsize=title_fontsize, fontsize=fontsize, columnspacing=1.0)
+
 def add_colorbar(fig, ax, im, label, position=(0.02, 0.08), loc='lower left', length=1.8, thickness=0.11,
                  orientation='horizontal', fsize=10, fmt=None, ticks=None):
     '''

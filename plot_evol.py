@@ -28,7 +28,7 @@ sys.path.append(os.path.abspath(path_to_functions))
 
 if '' in sys.path:
     sys.path.remove('')
-from functions.mandyocIO import plot_property, plot_lithology_legend, get_lithology_colors, read_tapioca_datasets, get_layer_roles, _legend_colors, COLOR_SED
+from functions.mandyocIO import plot_property, plot_strain_legend, get_lithology_colors, read_tapioca_datasets, get_layer_roles, COLOR_SED, get_layers_legend, layers_legend_layout, plot_layers_legend
 
 ####################################################################################################################################
 #Options of the command line (the same as frames_generator.py, plus --n-snapshots): the settings below are used for
@@ -149,7 +149,13 @@ sediment_layers = True
 sediment_codes = sorted(get_layer_roles(model_path).get('sediments', []))
 if(not sediment_layers):
     colors = [COLOR_SED if code in sediment_codes else color for code, color in enumerate(colors)]
-legend_colors = _legend_colors([COLOR_SED if code in sediment_codes else color for code, color in enumerate(colors)])
+
+#legend of the layers below the figure of the lithology, as in frames_generator.py (title, scale factor and rheology
+#and density of each layer; thickness=True adds the initial thickness); the figure gets the height of the legend
+#besides the height of the panels
+fig_width, axes_height = 12, 3 #inches, size of each panel (a frame of frames_generator.py)
+layers_legend = get_layers_legend(model_path, colors, thickness=False)
+layers_legend_ncol, layers_legend_height = layers_legend_layout(layers_legend, fig_width)
 
 cmap = ListedColormap(colors)
 np.seterr(divide='ignore')
@@ -191,9 +197,9 @@ def plot_lithology_frame(axs, i):
     axs.set_ylim(ylims)
     axs.set_xlim(xlims)
 
-    #lithology/strain legend with fixed size [inches], whatever the size of the figure
-    plot_lithology_legend(axs, colors=legend_colors, vmin=-0.5, vmax=0.9, alpha=0.2,
-                          position=(0.97, 0.25), loc='lower right')
+    #strain legend: a bar with the shading, with fixed size [inches], whatever the size of the figure
+    #(the layers are in the legend below the figure, see plot_layers_legend)
+    plot_strain_legend(axs, vmin=-0.5, vmax=0.9, alpha=0.2, position=(0.98, 0.2), loc='lower right')
 
     if(plot_melt):
         incremental_melt_i = np.where(air, 0.0, incremental_melt.isel(time=i).values)
@@ -230,7 +236,8 @@ print("Generating figures...")
 fsize = 14
 for prop in properties:
     #one panel per snapshot, each one with the size of a frame of frames_generator.py (12 x 3 in)
-    fig, axes = plt.subplots(len(idxs), 1, figsize=(12, 3*len(idxs)), constrained_layout=True)
+    height = axes_height*len(idxs) + (layers_legend_height if prop == 'lithology' else 0)
+    fig, axes = plt.subplots(len(idxs), 1, figsize=(fig_width, height), constrained_layout=True)
     axes = np.atleast_1d(axes)
 
     for axs, i in zip(axes, idxs):
@@ -252,6 +259,9 @@ for prop in properties:
         axs.set_xlabel('Distance [km]', fontsize=fsize)
         axs.set_ylabel('Topography [km]' if prop == 'surface' else 'Depth [km]', fontsize=fsize)
         axs.tick_params(axis='both', labelsize=fsize)
+
+    if(prop == 'lithology'):
+        plot_layers_legend(fig, layers_legend, layers_legend_ncol)
 
     figname = f"{fig_prefix(prop)}.{fig_format}"
     fig.savefig(f"{output_path}/{figname}", dpi=300)

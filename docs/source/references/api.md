@@ -72,6 +72,10 @@ For scenarios with sediments or a water layer, `'auto'` uses the roles of the la
 
     plot_property
     plot_lithology_legend
+    plot_strain_legend
+    get_layers_legend
+    layers_legend_layout
+    plot_layers_legend
     add_colorbar
 ```
 

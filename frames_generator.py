@@ -33,7 +33,7 @@ sys.path.append(os.path.abspath(path_to_functions))
 
 if '' in sys.path:
     sys.path.remove('')
-from functions.mandyocIO import change_dataset, plot_property, plot_lithology_legend, get_lithology_colors, read_tapioca_datasets, get_layer_roles, _legend_colors, COLOR_SED
+from functions.mandyocIO import change_dataset, plot_property, plot_strain_legend, get_lithology_colors, read_tapioca_datasets, get_layer_roles, COLOR_SED, get_layers_legend, layers_legend_layout, plot_layers_legend
 
 ####################################################################################################################################
 #Options of the command line: the settings below are used for the options that are not given
@@ -267,8 +267,13 @@ sediment_layers = True
 sediment_codes = sorted(get_layer_roles(model_path).get('sediments', []))
 if(not sediment_layers):
     colors = [COLOR_SED if code in sediment_codes else color for code, color in enumerate(colors)]
-#legend: one band per role, the sediments as a single band
-legend_colors = _legend_colors([COLOR_SED if code in sediment_codes else color for code, color in enumerate(colors)])
+
+#legend of the layers below the frames of the lithology, as in numerical_setup.png of tapioca (title, scale factor and
+#rheology and density of each layer; thickness=True adds the initial thickness); the frames get the height of the
+#legend besides the height of the axes
+fig_width, axes_height = 12, 3 #inches
+layers_legend = get_layers_legend(model_path, colors, thickness=False)
+layers_legend_ncol, layers_legend_height = layers_legend_layout(layers_legend, fig_width)
 
 #Creating a custom colormap according to the list of colors defined above.
 # This colormap will be used to plot the lithology mesh, where each lithology code is represented by a specific color.
@@ -347,10 +352,9 @@ def plot_lithology_frame(axs, i):
     axs.set_ylim(ylims)
     axs.set_xlim(xlims)
 
-    #lithology/strain legend with fixed size [inches], whatever the size of the figure
-    #colors of the layers of the scenario, top to bottom (sediments, water and basalt when the scenario has them)
-    plot_lithology_legend(axs, colors=legend_colors, vmin=-0.5, vmax=0.9, alpha=0.2,
-                          position=(0.97, 0.25), loc='lower right')
+    #strain legend: a bar with the shading, with fixed size [inches], whatever the size of the figure
+    #(the layers are in the legend below the axes, see plot_layers_legend)
+    plot_strain_legend(axs, vmin=-0.5, vmax=0.9, alpha=0.2, position=(0.98, 0.2), loc='lower right')
 
     if(plot_melt):
         incremental_melt_i = np.where(air, 0.0, incremental_melt.isel(time=i).values)[::,:]
@@ -397,13 +401,17 @@ with pymp.Parallel() as p:
                 dataset_i = dataset.isel(time=i).load()
 
             for prop in properties:
-                fig, axs = plt.subplots(1, 1, figsize=(12, 3), constrained_layout=True)
+                if(prop == 'lithology'):
+                    fig, axs = plt.subplots(1, 1, figsize=(fig_width, axes_height + layers_legend_height), constrained_layout=True)
+                else:
+                    fig, axs = plt.subplots(1, 1, figsize=(fig_width, axes_height), constrained_layout=True)
 
                 axs.text(0.01, 1.035, f'{model_name}', bbox=dict(facecolor='white', edgecolor='white', alpha=0.0), fontsize = 14, zorder=52, transform=axs.transAxes)
                 axs.text(0.5, 1.035, f'Time = {current_time:.2f} Myr', bbox=dict(facecolor='white', edgecolor='white', alpha=0.0), fontsize = 14, zorder=52, transform=axs.transAxes)
 
                 if(prop == 'lithology'):
                     plot_lithology_frame(axs, i)
+                    plot_layers_legend(fig, layers_legend, layers_legend_ncol)
                 else:
                     plot_property(dataset_i, prop, xlims, ylims_surface if prop == 'surface' else ylims, model_path, fig, axs,
                                   print_time=False,

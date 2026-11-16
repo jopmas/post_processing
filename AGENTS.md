@@ -38,7 +38,7 @@ Scripts and notebooks to post-process Mandyoc models from the NetCDF files creat
 - `functions/mandyocIO.py`: functions shared by the scripts and the notebook: lithology colors
   (`LITHOLOGY_COLORS`), readers of the tapioca files (`read_tapioca_datasets`, `read_params`, `read_times_steps`,
   `read_lithology`), crust measurements (`measure_crust_from_lithology`, `measure_crustal_thickness`,
-  `measure_margins_width`), `plot_lithology_legend`, `add_colorbar`, `plot_property`, the P-T-t path functions and
+  `measure_margins_width`), `plot_lithology_legend`, `plot_strain_legend`, `get_layers_legend` (legend of the layers below the lithology frames), `add_colorbar`, `plot_property`, the P-T-t path functions and
   helpers (`find_nearest`, `change_dataset`, `trim_axs`).
 - `docs/`: Sphinx documentation (myst-parser, sphinx_rtd_theme), as in tapioca. The pages are Markdown files in
   `docs/source` (`user_guide/`, `references/`); `references/api.md` lists the functions of `functions/mandyocIO.py`
