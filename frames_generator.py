@@ -226,7 +226,7 @@ lithology_colors = 'auto' #any number of layers: colors from the names of the la
 
 colors = get_lithology_colors(model_path, lithology_colors)
 
-#Scenarios with surface processes: each deposited sediment layer (one Mandyoc code per time interval, SP_vc.txt)
+#Scenarios with surface processes: each deposited sediment layer (one Mandyoc code per time interval, SP_vc.txt or sediment_layers.txt)
 #gets a color of SEDIMENT_COLORS (functions/mandyocIO.py), in cycle, to show the stratigraphy (sediment_layers = True),
 #or all of them the same color (False). No effect without sediments.
 sediment_layers = True

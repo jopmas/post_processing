@@ -112,12 +112,19 @@ def _read_scenario_text(model_path, pattern):
     return None
 
 def _read_layers_from_infos(model_path):
-    '''(name, density) of the layers (0 = bottom layer) from infos_*.txt, written by tapioca. Empty if there is no file.'''
+    '''
+    (name, density) of the layers (0 = bottom layer) from infos_*.txt, written by tapioca. Empty if there is no file.
+    A line with a range of codes (e.g. "6-75: sediments (wet_quartz): 70 layers ... rho = 2400.0 kg/m3", the layers
+    deposited by Mandyoc) gives one entry per code.
+    '''
     text = _read_scenario_text(model_path, 'infos_*.txt')
     if(text is None):
         return []
-    lines = re.findall(r'^\s*\d+: (.+?) \(\S+\): .*rho = (\S+) kg/m3', text, flags=re.MULTILINE)
-    return [(name, float(rho)) for name, rho in lines]
+    lines = re.findall(r'^\s*(\d+)(?:-(\d+))?: (.+?) \(\S+\): .*rho = (\S+) kg/m3', text, flags=re.MULTILINE)
+    layers = []
+    for first, last, name, rho in lines:
+        layers += [(name, float(rho))] * (int(last or first) - int(first) + 1)
+    return layers
 
 def get_layer_codes(model_path):
     '''
@@ -297,8 +304,14 @@ LAYER_NAME_ROLES = [('air', 'air'), ('water', 'water'), ('sediment', 'sediments'
                     ('upper_crust', 'upper crust'), ('decol', 'upper crust')]
 
 def _read_sediment_codes(model_path):
-    '''Layer codes of the sediments from SP_vc.txt of Mandyoc (time, code, ... per line). Empty if there is no file.'''
+    '''
+    Layer codes of the sediments from SP_vc.txt of Mandyoc (time, code, ... per line) or, without it, from
+    sediment_layers.txt of tapioca (first line: number of layers and first code; then time, code per line). Empty if
+    there is no file.
+    '''
     text = _read_scenario_text(model_path, 'SP_vc.txt')
+    if(text is None):
+        text = _read_scenario_text(model_path, 'sediment_layers.txt')
     if(text is None):
         return set()
     return {int(float(line.split()[1])) for line in text.splitlines() if len(line.split()) > 1}
@@ -316,7 +329,7 @@ def layer_roles(densities, names=(), sediment_codes=()):
         Names of the layers (infos_*.txt). A name with a keyword of LAYER_NAME_ROLES gives the role.
 
     sediment_codes: set
-        Codes of the sediments (SP_vc.txt).
+        Codes of the sediments (SP_vc.txt or sediment_layers.txt).
 
     Returns
     -------
@@ -352,8 +365,8 @@ def layer_roles(densities, names=(), sediment_codes=()):
 def get_layer_roles(model_path):
     '''
     Role of each Mandyoc layer code of the scenario (asthenosphere, lithospheric mantle, lower crust, upper crust,
-    basalt, sediments, water, air), from the names of the layers in infos_*.txt, the sediment codes in SP_vc.txt and
-    the densities in interfaces.txt (see layer_roles).
+    basalt, sediments, water, air), from the names of the layers in infos_*.txt, the sediment codes in SP_vc.txt (or
+    sediment_layers.txt) and the densities in interfaces.txt (see layer_roles).
 
     Parameters
     ----------
@@ -385,6 +398,12 @@ def _auto_lithology_colors(model_path):
             if('seed' in name.lower()):
                 code_around = _code_around_layer(lithology, code, number_of_layers-1)
                 colors[code] = colors[code_around] if code_around is not None else _color_from_layer(name, rho)
+        #The deposited sediment layers (one code per time interval) get bands of SEDIMENT_COLORS, as below
+        sediment_codes = layer_roles([rho for name, rho in layers], [name for name, rho in layers],
+                                     _read_sediment_codes(model_path)).get('sediments', [])
+        if(len(sediment_codes) > 1):
+            for k, code in enumerate(sorted(sediment_codes)):
+                colors[code] = SEDIMENT_COLORS[k % len(SEDIMENT_COLORS)]
         return colors
 
     #Scenarios with surface processes (sediments) or a water layer: colors from the roles of the layers. The other

@@ -19,9 +19,12 @@ layer code (order of the layers in `interfaces.txt`, 0 = bottom layer) of each m
 `get_lithology_colors(model_path, lithology_colors='auto')` returns the colors of a key, of a list, or, with
 `'auto'`, for any number of layers, of the first of these sources that fits the number of layers in `lithology.nc`:
 
-1. The names of the layers in `infos_*.txt`, written by tapioca (`LAYER_NAME_COLORS`). The other names, such as
-   `weak_seed` and `mobile_belt`, get their color from the density of the layer.
-2. For scenarios with surface processes (`SP_vc.txt`) or a water layer (density between 500 and 1200 kg/m3):
+1. The names of the layers in `infos_*.txt`, written by tapioca, with the colors of the shapes with these names in the
+   SVG of the scenario or, without them, `LAYER_NAME_COLORS`. The other names, such as `weak_seed` and `mobile_belt`,
+   get their color from the density of the layer. A line with a range of codes (e.g. `6-75: sediments ...`, the
+   layers deposited by Mandyoc) gives the name to all the codes of the range, and the deposited sediment layers get
+   the bands of `SEDIMENT_COLORS`, as below.
+2. For scenarios with surface processes (`SP_vc.txt` or `sediment_layers.txt`) or a water layer (density between 500 and 1200 kg/m3):
    the role of each layer (`get_layer_roles`) and its color (`ROLE_COLORS`). The deposited sediment layers (one
    code per time interval) get the colors of `SEDIMENT_COLORS` in cycle (yellow, brown, ochre, orange), so the
    stratigraphy can be seen; the water is light blue and the basalt (extracted magma) dark grey blue.
@@ -31,7 +34,7 @@ layer code (order of the layers in `interfaces.txt`, 0 = bottom layer) of each m
 
 `get_layer_roles(model_path)` gives the role of each layer code (`ROLES`: asthenosphere, lithospheric mantle, lower
 crust, upper crust, basalt, sediments, water, air) from the names in `infos_*.txt` (`LAYER_NAME_ROLES`), the sediment
-codes of `SP_vc.txt` and the densities in `interfaces.txt` (`layer_roles`): < 500 kg/m3 air, < 1200 water, < 2550
+codes of `SP_vc.txt` (or, without it, of `sediment_layers.txt` of tapioca) and the densities in `interfaces.txt` (`layer_roles`): < 500 kg/m3 air, < 1200 water, < 2550
 sediments, ≥ 3200 mantle (code 0 is the asthenosphere), 2750–3200 lower crust or, above an upper crust layer,
 basalt; upper crust otherwise. It is used by the colors above and by `seismic_section.py`.
 
