@@ -384,23 +384,29 @@ def get_layer_roles(model_path):
     return layer_roles(densities, names, _read_sediment_codes(model_path))
 
 def _auto_lithology_colors(model_path):
-    '''Colors of the layer codes from the names of the layers (colors of the SVG or LAYER_NAME_COLORS), the number of layers, the densities in interfaces.txt or in density.nc, in this order.'''
+    '''Colors of the layer codes from the names of the layers (LAYER_NAME_COLORS for the crust and mantle, colors of the SVG or LAYER_NAME_COLORS for the others), the number of layers, the densities in interfaces.txt or in density.nc, in this order.'''
     with xr.open_dataset(f"{model_path}/lithology.nc") as dataset:
         lithology = dataset.lithology.isel(time=0).values
     number_of_layers = int(lithology.max()) + 1
 
     layers = _read_layers_from_infos(model_path)
     if(len(layers) == number_of_layers):
+        roles = layer_roles([rho for name, rho in layers], [name for name, rho in layers], _read_sediment_codes(model_path))
+        role_of_code = {code: role for role, codes in roles.items() for code in codes}
+        #Crust and mantle: the standard colors of the group (LAYER_NAME_COLORS); the other layers (basalt, decolement,
+        #water, ...): the color of their shape in the SVG of the scenario or, without it, LAYER_NAME_COLORS
         svg_colors = _read_colors_from_svg(model_path)
-        colors = [svg_colors.get(name, _color_from_layer(name, rho)) for name, rho in layers]
+        standard = ('asthenosphere', 'lithospheric mantle', 'lower crust', 'upper crust')
+        colors = [_color_from_layer(name, rho) if role_of_code.get(code) in standard
+                  else svg_colors.get(name, _color_from_layer(name, rho))
+                  for code, (name, rho) in enumerate(layers)]
         #The weak seed gets the color of the layer around it
         for code, (name, rho) in enumerate(layers):
             if('seed' in name.lower()):
                 code_around = _code_around_layer(lithology, code, number_of_layers-1)
                 colors[code] = colors[code_around] if code_around is not None else _color_from_layer(name, rho)
         #The deposited sediment layers (one code per time interval) get bands of SEDIMENT_COLORS, as below
-        sediment_codes = layer_roles([rho for name, rho in layers], [name for name, rho in layers],
-                                     _read_sediment_codes(model_path)).get('sediments', [])
+        sediment_codes = roles.get('sediments', [])
         if(len(sediment_codes) > 1):
             for k, code in enumerate(sorted(sediment_codes)):
                 colors[code] = SEDIMENT_COLORS[k % len(SEDIMENT_COLORS)]
@@ -447,8 +453,9 @@ def get_lithology_colors(model_path, lithology_colors='auto'):
     lithology_colors: str or list
         A key of LITHOLOGY_COLORS ('double_keel', 'rifting', 'accordion', 'svg_accordion'), a list with one color per
         code, or 'auto': any number of layers, with the colors from, in this order, the names of the layers in
-        infos_*.txt (with the colors of the shapes with these names in the SVG of the scenario or, without them,
-        LAYER_NAME_COLORS, or the density for the other names; a weak seed gets the color of the layer around it), the number of layers in lithology.nc
+        infos_*.txt (LAYER_NAME_COLORS for the crust and mantle; for the other layers the colors of the shapes with
+        these names in the SVG of the scenario or, without them, LAYER_NAME_COLORS, or the density for the other
+        names; a weak seed gets the color of the layer around it), the number of layers in lithology.nc
         (MODEL_FROM_NUMBER_OF_LAYERS), the densities in interfaces.txt or, approximately, the densities in density.nc.
         infos_*.txt, the SVG and interfaces.txt are read from the scenario directory, its inputs_*.zip or <model>.zip.
 

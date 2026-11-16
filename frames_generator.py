@@ -48,8 +48,8 @@ if not os.path.isdir(output_path):
 
 plot_isotherms = True
 # plot_isotherms = False
-# plot_melt = True
-plot_melt = False
+plot_melt = True
+# plot_melt = False
 plot_particles=False
 
 
@@ -326,10 +326,15 @@ def plot_lithology_frame(axs, i):
 
         axs.contourf(xx, zz+40, incremental_melt_i, colors=color_incremental_melt, alpha=0.4, zorder=30)
         axs.contourf(xx, zz+40, melt_i, colors=color_depleted_mantle, alpha=0.4, zorder=20)
-        #plotting melt legend
-        text_fsize = 12
-        axs.text(0.10, 1.035, r'Melt Fraction $\left(\frac{\partial \phi}{\partial t}\right)$', color='xkcd:bright pink', fontsize=text_fsize, transform=axs.transAxes, zorder=60)
-        axs.text(0.25, 1.035, r'Depleted Mantle ($\phi$)', color='xkcd:bright purple', fontsize=text_fsize, transform=axs.transAxes, zorder=60)
+        #plotting melt legend: inside the bottom left corner of the axis, so it does not overlap the model name and the
+        #time above the axis, whatever their length; the second label is placed to the right of the first one
+        text_fsize = 11
+        box = dict(facecolor='white', edgecolor='none', alpha=0.7, pad=1.5)
+        melt_label = axs.text(0.01, 0.04, r'Melt Fraction ($\partial \phi / \partial t$)', color='xkcd:bright pink',
+                              fontsize=text_fsize, ha='left', va='bottom', bbox=box, transform=axs.transAxes, zorder=60)
+        axs.annotate(r'Depleted Mantle ($\phi$)', xy=(1, 0.5), xycoords=melt_label, xytext=(8, 0),
+                     textcoords='offset points', ha='left', va='center', color='xkcd:bright purple', fontsize=text_fsize,
+                     bbox=box, zorder=60)
 
 with pymp.Parallel() as p:
     # for i in p.range(start, end-step, step):

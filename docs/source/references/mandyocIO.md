@@ -19,8 +19,9 @@ layer code (order of the layers in `interfaces.txt`, 0 = bottom layer) of each m
 `get_lithology_colors(model_path, lithology_colors='auto')` returns the colors of a key, of a list, or, with
 `'auto'`, for any number of layers, of the first of these sources that fits the number of layers in `lithology.nc`:
 
-1. The names of the layers in `infos_*.txt`, written by tapioca, with the colors of the shapes with these names in the
-   SVG of the scenario or, without them, `LAYER_NAME_COLORS`. The other names, such as `weak_seed` and `mobile_belt`,
+1. The names of the layers in `infos_*.txt`, written by tapioca: the crust and mantle layers get the standard colors
+   of `LAYER_NAME_COLORS` (the same as the other scenarios); the other layers (basalt, decolement, water, ...) the
+   colors of the shapes with these names in the SVG of the scenario or, without them, `LAYER_NAME_COLORS`. The other names, such as `weak_seed` and `mobile_belt`,
    get their color from the density of the layer. A line with a range of codes (e.g. `6-75: sediments ...`, the
    layers deposited by Mandyoc) gives the name to all the codes of the range, and the deposited sediment layers get
    the bands of `SEDIMENT_COLORS`, as below.
