@@ -219,7 +219,7 @@ if(layer_codes is not None):
 
 min_exhumed_elements = 3 #minimum thickness of the exhumed lithospheric mantle [elements of the mesh]
 exhumed_mantle_codes = [mantle_lithosphere1_code, seed_code, mantle_lithosphere2_code] #layers of the lithospheric mantle
-max_thin_crust_elements = 16 #crust on top of the mantle thinner than this [elements of the mesh] is ignored (0: the mantle must be right below the air)
+max_thin_crust_elements = 0 #crust on top of the mantle thinner than this [elements of the mesh] is ignored (0: the mantle must be right below the air)
 thin_crust_codes = [upper_crust_code] #layers of the thin crust that can be ignored
 
 def filter_trackdataset(trackdataset, cond):
