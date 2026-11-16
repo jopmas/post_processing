@@ -667,7 +667,8 @@ def get_layers_legend(model_path, colors, thickness=True):
     titles of the shapes in the SVG of the scenario (or the names). The weak seed is not in the legend. The thickness h
     is measured in the first step of lithology.nc: bodies that do not reach both sides of the domain (e.g. a basin):
     maximum thickness; bottom layer (asthenosphere): range of thickness along x; other layers: most common thickness
-    along x. The sediments deposited by Mandyoc (several codes) get COLOR_SED.
+    along x. The sediments deposited by Mandyoc (several codes) get COLOR_SED. The basalt layers (extracted magma, see
+    get_layer_roles) are in the legend even with zero thickness in the first step.
 
     Parameters
     ----------
@@ -694,7 +695,9 @@ def get_layers_legend(model_path, colors, thickness=True):
         dz = float(abs(dataset.z.values[1] - dataset.z.values[0])) / 1.0e3 #km
     number_of_codes = len(colors)
 
-    sediment_codes = set(get_layer_roles(model_path).get('sediments', []))
+    roles = get_layer_roles(model_path)
+    sediment_codes = set(roles.get('sediments', []))
+    basalt_codes = set(roles.get('basalt', [])) #extracted magma: zero thickness in the first step
     layers = _read_layers_properties_from_infos(model_path)
     if(len(layers) == number_of_codes):
         titles = _read_titles_from_svg(model_path)
@@ -722,10 +725,14 @@ def get_layers_legend(model_path, colors, thickness=True):
     for name, codes in reversed(list(groups.items())): #top to bottom
         th = np.isin(lithology, codes).sum(axis=0) * dz #km, per column
         deposited = len(codes) > 1 and set(codes) <= sediment_codes
+        extruded = set(codes) <= basalt_codes
         if(th.max() <= 0):
-            if(not deposited):
+            if(deposited):
+                h = 'deposited by Mandyoc'
+            elif(extruded):
+                h = 'extruded by Mandyoc'
+            else:
                 continue #layer that is not in the model
-            h = 'deposited by Mandyoc'
         elif(th[0] <= 0 or th[-1] <= 0): #body
             h = f"{th.max():.0f} km"
         elif(0 in codes and np.round(th.min()) != np.round(th.max())): #bottom layer
