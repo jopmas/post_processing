@@ -21,6 +21,9 @@ Scripts and notebooks to post-process Mandyoc models from the NetCDF files creat
   with `plot_property` (one set of frames, video and gif per property). `plot_melt = 'auto'` plots the melt only if
   the model has it. The options `--prop`, `--plot-melt`/`--no-plot-melt`, `--xlims` and `--ylims` override the
   settings of the script (`--help`).
+- `plot_evol.py`: the frames of `frames_generator.py` (same plotting and the same command line options, plus
+  `--n-snapshots`, 5 by default) of equally spaced steps from the first to the last one, stacked in one figure per
+  property: `_output/<model>_evol_<prop>[_MeltFrac].png`.
 - `plot_snapshots.py`: snapshots of the scenario (equally spaced steps from the first to the last one) with
   `plot_property`, based on `Geometries.ipynb` without the measurements of the crust.
 - `pipeline.sh`: from the zip of a scenario: extraction, `0_organize_outputs.sh`, `meshes2netcdf.jl` and
