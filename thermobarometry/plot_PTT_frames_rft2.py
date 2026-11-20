@@ -24,12 +24,12 @@ matplotlib.use('agg')
 path = os.getcwd().split('/')
 machine_path = f'/{path[1]}/{path[2]}' #cat the /home/user/ or /Users/user from system using path
 
-path_to_functions = os.path.dirname(os.path.abspath(__file__)) # post_processing folder, with functions/mandyocIO.py
+path_to_functions = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # post_processing folder, with functions/mandyocIO.py
 sys.path.append(os.path.abspath(path_to_functions))
 
 if '' in sys.path:
     sys.path.remove('')
-from functions.mandyocIO import change_dataset, plot_property, plot_lithology_legend, plot_tracked_particles, plot_ptt_paths_three_particles, plot_tracked_particles_depth_coded, plot_ptt_paths_depth_coded_frame, find_nearest, _extract_interface, get_lithology_colors, get_layer_codes, get_lithosphere_thickness
+from functions.mandyocIO import change_dataset, plot_property, plot_strain_legend, get_layers_legend, layers_legend_layout, plot_layers_legend, align_ptt_frame, plot_tracked_particles, plot_ptt_paths_three_particles, plot_tracked_particles_depth_coded, plot_ptt_paths_depth_coded_frame, find_nearest, _extract_interface, get_lithology_colors, get_layer_codes, get_lithosphere_thickness
 
 ####################################################################################################################################
 model_path = os.getcwd() # Get local file
@@ -458,12 +458,18 @@ colors = get_lithology_colors(model_path, lithology_colors)
 
 cmap = ListedColormap(colors)
 
+#legend of the layers below the frames, as in frames_generator.py (title, scale factor and rheology and density of each
+#layer; thickness=True adds the initial thickness); the frames get the height of the legend besides their height
+fig_width = 12 #inches
+layers_legend = get_layers_legend(model_path, colors, thickness=False)
+layers_legend_ncol, layers_legend_height = layers_legend_layout(layers_legend, fig_width)
+
 # time = time[::-1]
 with pymp.Parallel() as p:
     for i in p.range(start, end-step, step):
         data = dataset.isel(time=i)
         for prop in properties:
-            fig, axs = plt.subplots(2, 2, figsize=(12, 6), constrained_layout=True, gridspec_kw={'width_ratios': [1, 0.4]})
+            fig, axs = plt.subplots(2, 2, figsize=(fig_width, 6 + (layers_legend_height if prop == 'lithology' else 0)), constrained_layout=True, gridspec_kw={'width_ratios': [1, 0.4]})
             gs = axs[0, 0].get_gridspec()
 
             # Remove os eixos da segunda linha
@@ -503,18 +509,19 @@ with pymp.Parallel() as p:
                 strain_i = np.where(dataset.density.isel(time=i).values < 1200.0, 0.0, dataset.strain.isel(time=i).values)
                 # axs[0].pcolormesh(data, cmap=cmap, vmin=0, vmax=5, alpha=1.0)
                 axs[0,0].imshow(data, aspect='auto', extent=(0, Lx/1000, -Lz/1000+40, 40), cmap=cmap, vmin=-0.5, vmax=len(colors)-0.5, alpha=1.0)            
-                axs[0,0].imshow(np.log10(strain_i[::-1,:]), extent=(0, Lx/1000, -Lz/1000+40, 40), cmap="Greys", vmin=-0.5, vmax=0.9, alpha=0.2)
+                axs[0,0].imshow(np.log10(strain_i[::-1,:]), extent=(0, Lx/1000, -Lz/1000+40, 40), cmap="Greys", vmin=-0.5, vmax=0.9, alpha=0.2, aspect='auto')
                 axs[0,0].contour(xx, zz+40, dataset.temperature.isel(time=i), levels=[500, 600, 700, 800, 900, 1300], colors='r', linewidths=1.0)
                 axs[0,0].set_ylim(ylims)
                 axs[0,0].set_xlim(xlims)
 
                 ax3.imshow(data, aspect='auto', extent=(0, Lx/1000, -Lz/1000+40, 40), cmap=cmap, vmin=-0.5, vmax=len(colors)-0.5, alpha=1.0)            
-                ax3.imshow(np.log10(strain_i[::-1,:]), extent=(0, Lx/1000, -Lz/1000+40, 40), cmap="Greys", vmin=-0.5, vmax=0.9, alpha=0.2)
+                ax3.imshow(np.log10(strain_i[::-1,:]), extent=(0, Lx/1000, -Lz/1000+40, 40), cmap="Greys", vmin=-0.5, vmax=0.9, alpha=0.2, aspect='auto')
                 ax3.contour(xx, zz+40, dataset.temperature.isel(time=i), levels=[500, 600, 700, 800, 900, 1300], colors='r', linewidths=1.0)
 
-                #lithology/strain legend with fixed size [inches], whatever the size of the figure
-                plot_lithology_legend(ax3, colors=[color_uc, color_lc, color_lit, color_ast], vmin=-0.5, vmax=0.9, alpha=0.2,
-                                      position=(0.98, 0.20), loc='lower right')
+                #strain legend: a bar with the shading, with fixed size [inches], whatever the size of the figure
+                #(the layers are in the legend below the figure, see plot_layers_legend)
+                plot_strain_legend(ax3, vmin=-0.5, vmax=0.9, alpha=0.2, position=(0.98, 0.20), loc='lower right')
+                plot_layers_legend(fig, layers_legend, layers_legend_ncol)
 
             if(plot_three_particles):
                 linewidth = 0.85
@@ -602,6 +609,8 @@ with pymp.Parallel() as p:
                 figname = f"{model_name}_{plot_type}_{prop}_and_PTt_MeltFrac_{str(int(steps_model[i])).zfill(6)}.png"
             else:
                 figname = f"{model_name}_{plot_type}_{prop}_and_PTt_{str(int(steps_model[i])).zfill(6)}.png"
+            #map and P-T diagram close to each other and the bottom panel with the width of the first row
+            align_ptt_frame(fig, axs[0,0], axs[0,1], ax3, twin=ax1)
             fig.savefig(f"_output/{figname}", dpi=300)
             plt.close('all')
 

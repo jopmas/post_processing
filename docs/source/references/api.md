@@ -76,6 +76,7 @@ For scenarios with sediments or a water layer, `'auto'` uses the roles of the la
     get_layers_legend
     layers_legend_layout
     plot_layers_legend
+    align_ptt_frame
     add_colorbar
 ```
 

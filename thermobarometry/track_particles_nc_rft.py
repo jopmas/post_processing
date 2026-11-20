@@ -24,7 +24,7 @@ import multiprocessing #needed to run pymp in macOS
 multiprocessing.set_start_method('fork') #needed to run pymp in macOS arm architectures
 import pymp
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__))) # post_processing folder, with functions/mandyocIO.py
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) # post_processing folder, with functions/mandyocIO.py
 from functions.mandyocIO import get_velocity, get_layer_codes
 
 model_path = os.getcwd() # Get local file

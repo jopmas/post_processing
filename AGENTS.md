@@ -24,6 +24,14 @@ Scripts and notebooks to post-process Mandyoc models from the NetCDF files creat
 - `plot_evol.py`: the frames of `frames_generator.py` (same plotting and the same command line options, plus
   `--n-snapshots`, 5 by default) of equally spaced steps from the first to the last one, stacked in one figure per
   property: `_output/<model>_evol_<prop>[_MeltFrac].png`.
+- `plot_evol_txt.py`: as `plot_evol.py`, but from the `.txt` files of Mandyoc, to follow a scenario while it runs
+  (no `.nc` files). The files can be in the folder of the scenario or in the folders of `0_organize_outputs.sh`
+  (`density/`, `lithos/`, ...); the lithology comes from `litho_<step>_<rank>.txt` (`ix iz code` on the 5 times finer
+  mesh, `iz = 0` at the top). Only the steps with all the files are used (the last one can still be being written).
+  The fields are read into an `xarray.Dataset` with the structure of the tapioca files, so `plot_property` works;
+  no `surface` (it needs `surface.nc`), the air/crust interface comes from the density. Output:
+  `_output/<model>_evol_txt_<prop>[_MeltFrac].png`. `get_lithology_colors` and `get_layers_legend` take the
+  lithology of the first snapshot (`lithology=`) instead of `lithology.nc`.
 - `plot_snapshots.py`: snapshots of the scenario (equally spaced steps from the first to the last one) with
   `plot_property`, based on `Geometries.ipynb` without the measurements of the crust.
 - `pipeline.sh`: from the zip of a scenario: extraction, `0_organize_outputs.sh`, `meshes2netcdf.jl` and

@@ -28,12 +28,12 @@ matplotlib.use('agg')
 path = os.getcwd().split('/')
 machine_path = f'/{path[1]}/{path[2]}' #cat the /home/user/ or /Users/user from system using path
 
-path_to_functions = os.path.dirname(os.path.abspath(__file__)) # post_processing folder, with functions/mandyocIO.py
+path_to_functions = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # post_processing folder, with functions/mandyocIO.py
 sys.path.append(os.path.abspath(path_to_functions))
 
 if '' in sys.path:
     sys.path.remove('')
-from functions.mandyocIO import find_nearest, plot_lithology_legend, get_lithology_colors, get_layer_codes
+from functions.mandyocIO import find_nearest, plot_strain_legend, get_lithology_colors, get_layer_codes, get_layers_legend, layers_legend_layout, plot_layers_legend
 
 ####################################################################################################################################
 model_path = os.getcwd() # Get local file
@@ -517,6 +517,12 @@ colors = get_lithology_colors(model_path, lithology_colors)
 # Use vmin=-0.5 and vmax=len(colors)-0.5 so the code k gets colors[k]
 
 cmap = ListedColormap(colors)
+
+#legend of the layers below the frames, as in frames_generator.py (title, scale factor and rheology and density of each
+#layer; thickness=True adds the initial thickness); the frames get the height of the legend besides their height
+fig_width = 12 #inches
+layers_legend = get_layers_legend(model_path, colors, thickness=False)
+layers_legend_ncol, layers_legend_height = layers_legend_layout(layers_legend, fig_width)
 np.seterr(divide='ignore')
 
 #strain shading limits (log10) used in the plot and in the legend
@@ -539,7 +545,8 @@ with pymp.Parallel() as p:
 
         # print(f"Plotting frame {i} of {end} at time {current_time} Myr...")
         # for prop in properties:
-        fig, axs = plt.subplots(1, 2, figsize=(12, 3), constrained_layout=True, gridspec_kw={'width_ratios': [1, 0.4]})
+        fig, axs = plt.subplots(1, 2, figsize=(fig_width, 3 + layers_legend_height), constrained_layout=True, gridspec_kw={'width_ratios': [1, 0.4]})
+        plot_layers_legend(fig, layers_legend, layers_legend_ncol)
         axs[0].text(0.5, 1.035, f'Time = {current_time:.2f} Myr', bbox=dict(facecolor='white', edgecolor='white', alpha=0.0), fontsize = 14, zorder=52, transform=axs[0].transAxes)
 
         xlims = [0, Lx / 1.0e3]
@@ -561,10 +568,10 @@ with pymp.Parallel() as p:
         axs[0].contour(x, z+40, temperature.isel(time=i).values, levels=[500, 600, 700, 800, 900, 1300], colors='r', linewidths=1.0)
 
         if(plot_colorbar):
-            #lithology/strain legend with fixed size [inches], whatever the size of the figure
-            plot_lithology_legend(axs[0], colors=[color_uc, color_lc, color_lit, color_ast],
-                                  vmin=strain_vmin, vmax=strain_vmax, alpha=strain_alpha,
-                                  position=(0.05, 0.20), loc='lower left')
+            #strain legend: a bar with the shading, with fixed size [inches], whatever the size of the figure
+            #(the layers are in the legend below the figure, see plot_layers_legend)
+            plot_strain_legend(axs[0], vmin=strain_vmin, vmax=strain_vmax, alpha=strain_alpha,
+                               position=(0.05, 0.20), loc='lower left')
               
 
         for particle, particle_layer, T_max, P_max in zip(range(n), particles_layers, T_maxs, P_maxs):

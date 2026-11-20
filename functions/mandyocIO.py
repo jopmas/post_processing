@@ -407,10 +407,13 @@ def get_layer_roles(model_path):
     names = [name for name, rho in layers] if len(layers) == len(densities) else []
     return layer_roles(densities, names, _read_sediment_codes(model_path))
 
-def _auto_lithology_colors(model_path):
-    '''Colors of the layer codes from the names of the layers (LAYER_NAME_COLORS for the crust and mantle, colors of the SVG or LAYER_NAME_COLORS for the others), the number of layers, the densities in interfaces.txt or in density.nc, in this order.'''
-    with xr.open_dataset(f"{model_path}/lithology.nc") as dataset:
-        lithology = dataset.lithology.isel(time=0).values
+def _auto_lithology_colors(model_path, lithology=None):
+    '''Colors of the layer codes from the names of the layers (LAYER_NAME_COLORS for the crust and mantle, colors of the SVG or LAYER_NAME_COLORS for the others), the number of layers, the densities in interfaces.txt or in density.nc, in this order.
+    lithology: layer codes of the first step (z, x), instead of lithology.nc (e.g. read from the .txt files of Mandyoc).'''
+    if(lithology is None):
+        with xr.open_dataset(f"{model_path}/lithology.nc") as dataset:
+            lithology = dataset.lithology.isel(time=0).values
+    lithology = np.asarray(lithology)
     number_of_layers = int(lithology.max()) + 1
 
     layers = _read_layers_from_infos(model_path)
@@ -465,7 +468,7 @@ def _auto_lithology_colors(model_path):
                      f"layers in {model_path} or in its inputs_*.zip. Choose one of {list(LITHOLOGY_COLORS)} or give a "
                      f"list with {number_of_layers} colors.")
 
-def get_lithology_colors(model_path, lithology_colors='auto'):
+def get_lithology_colors(model_path, lithology_colors='auto', lithology=None):
     '''
     Colors of the Mandyoc layer codes (order of the layers in interfaces.txt, 0 = bottom layer).
 
@@ -483,13 +486,17 @@ def get_lithology_colors(model_path, lithology_colors='auto'):
         (MODEL_FROM_NUMBER_OF_LAYERS), the densities in interfaces.txt or, approximately, the densities in density.nc.
         infos_*.txt, the SVG and interfaces.txt are read from the scenario directory, its inputs_*.zip or <model>.zip.
 
+    lithology: array_like or None
+        Layer codes of the first step (z, x) for lithology_colors='auto', instead of lithology.nc (e.g. read from the
+        .txt files of Mandyoc while the scenario runs, see plot_evol_txt.py).
+
     Returns
     -------
     colors: list
         One color per layer code.
     '''
     if(isinstance(lithology_colors, str) and lithology_colors == 'auto'):
-        return _auto_lithology_colors(model_path)
+        return _auto_lithology_colors(model_path, lithology)
 
     if(isinstance(lithology_colors, str)):
         return LITHOLOGY_COLORS[lithology_colors]
@@ -658,7 +665,7 @@ def _read_interfaces_parameter(model_path, key):
     line = re.search(rf'^{key}\s+(.*)$', text, flags=re.MULTILINE)
     return [float(value) for value in line.group(1).split()] if line else []
 
-def get_layers_legend(model_path, colors, thickness=True):
+def get_layers_legend(model_path, colors, thickness=True, lithology=None):
     '''
     Legend entries of the layers of the scenario, as in the numerical setup of tapioca (numerical_setup.png): title,
     scale factor and rheology, density and thickness of each layer, from top to bottom.
@@ -683,6 +690,10 @@ def get_layers_legend(model_path, colors, thickness=True):
         Add the thickness h as the last line of each entry (True) or only the title, scale factor and rheology and
         density (False, e.g. in the frames of the videos, where the layers change their thickness).
 
+    lithology: :class:`xarray.DataArray` or None
+        Layer codes of the first step (z, x), with the coordinate z [m], instead of lithology.nc (e.g. read from the
+        .txt files of Mandyoc while the scenario runs, see plot_evol_txt.py).
+
     Returns
     -------
     handles: list
@@ -690,9 +701,11 @@ def get_layers_legend(model_path, colors, thickness=True):
     '''
     from matplotlib.patches import Patch
 
-    with xr.open_dataset(f"{model_path}/lithology.nc") as dataset:
-        lithology = dataset.lithology.isel(time=0).values
-        dz = float(abs(dataset.z.values[1] - dataset.z.values[0])) / 1.0e3 #km
+    if(lithology is None):
+        with xr.open_dataset(f"{model_path}/lithology.nc") as dataset:
+            lithology = dataset.lithology.isel(time=0).load()
+    dz = float(abs(lithology.z.values[1] - lithology.z.values[0])) / 1.0e3 #km
+    lithology = lithology.values
     number_of_codes = len(colors)
 
     roles = get_layer_roles(model_path)
@@ -773,6 +786,43 @@ def layers_legend_layout(handles, width, fontsize=8, title_fontsize=12, dpi=100)
         legend.remove()
     plt.close(fig)
     return ncol, bbox.height / dpi
+
+def align_ptt_frame(fig, ax_map, ax_pt, ax_bottom, twin=None, width_ratio=0.4, pad=0.15):
+    '''
+    Align the panels of a P-T-t frame (plot_PTT_frames_rft*.py): the map (ax_map) and the P-T diagram (ax_pt) side by
+    side in the first row, separated only by the space of their labels plus pad, and the bottom panel (ax_bottom) with
+    the width of the first row (from the left of the map to the right of the P-T diagram). Call it after plotting
+    everything, right before saving: the constrained layout gives the margins of the labels and is then turned off.
+
+    Parameters
+    ----------
+    fig: `~matplotlib.figure.Figure`
+    ax_map, ax_pt, ax_bottom: `~matplotlib.axes.Axes`
+    twin: `~matplotlib.axes.Axes`, optional
+        Twin axis of ax_pt (e.g. the depth axis), placed with it.
+    width_ratio: float
+        Width of the P-T diagram over the width of the map.
+    pad: float
+        Space between the labels of the map and of the P-T diagram [inches].
+    '''
+    fig.canvas.draw() #positions of the constrained layout
+    fig.set_layout_engine('none')
+    renderer = fig.canvas.get_renderer()
+    width_px = fig.get_figwidth() * fig.dpi
+    pos_map, pos_pt, pos_bottom = ax_map.get_position(), ax_pt.get_position(), ax_bottom.get_position()
+
+    left = min(pos_map.x0, pos_bottom.x0)
+    right = max(pos_pt.x1, pos_bottom.x1)
+    #space between the panels of the first row: labels on the right of the map and on the left of the P-T diagram
+    out_map = max(ax_map.get_tightbbox(renderer).x1 / width_px - pos_map.x1, 0.0)
+    out_pt = max(pos_pt.x0 - ax_pt.get_tightbbox(renderer).x0 / width_px, 0.0)
+    gap = out_map + out_pt + pad / fig.get_figwidth()
+    width_map = (right - left - gap) / (1.0 + width_ratio)
+
+    ax_map.set_position([left, pos_map.y0, width_map, pos_map.height])
+    for ax in [ax_pt] + ([twin] if twin is not None else []):
+        ax.set_position([left + width_map + gap, pos_pt.y0, right - left - width_map - gap, pos_pt.height])
+    ax_bottom.set_position([left, pos_bottom.y0, right - left, pos_bottom.height])
 
 def plot_layers_legend(fig, handles, ncol, fontsize=8, title_fontsize=12, loc='outside lower center'):
     '''
