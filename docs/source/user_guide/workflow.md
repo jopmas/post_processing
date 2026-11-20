@@ -72,8 +72,8 @@ See [Data format](../references/data_format.md).
 ## 3. Track the particles
 
 ```
-python ~/opt/post_processing/track_particles_nc_dk.py    # double keel models
-python ~/opt/post_processing/track_particles_nc_rft.py   # rifting models
+python ~/opt/post_processing/thermobarometry/track_particles_nc_dk.py    # double keel models
+python ~/opt/post_processing/thermobarometry/track_particles_nc_rft.py   # rifting models
 ```
 
 create `_track_xzPT_all_steps.nc`. See [Particle tracking](tracking.md).
@@ -81,8 +81,8 @@ create `_track_xzPT_all_steps.nc`. See [Particle tracking](tracking.md).
 ## 4. Frames and videos
 
 ```
-python ~/opt/post_processing/plot_PTT_frames_dk.py    # lithology + temperature-coded P-T-t paths
-python ~/opt/post_processing/plot_PTT_frames_rft.py   # lithology + depth-coded P-T-t paths
+python ~/opt/post_processing/thermobarometry/plot_PTT_frames_dk.py    # lithology + temperature-coded P-T-t paths
+python ~/opt/post_processing/thermobarometry/plot_PTT_frames_rft.py   # lithology + depth-coded P-T-t paths
 python ~/opt/post_processing/frames_generator.py      # lithology, strain, isotherms and melt
 ```
 

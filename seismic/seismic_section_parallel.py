@@ -57,7 +57,7 @@ from scipy.signal import oaconvolve
 import tremelique as tr
 
 # post_processing folder, with functions/mandyocIO.py (lithology colours of the videos)
-sys.path.append(str(Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()))
+sys.path.append(str(Path(__file__).resolve().parent.parent if "__file__" in globals() else Path.cwd().parent))  # post_processing folder (parent of seismic/)
 from functions.mandyocIO import (  # noqa: E402
     COLOR_AST,
     COLOR_BAS,

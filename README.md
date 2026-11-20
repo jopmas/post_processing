@@ -53,8 +53,8 @@ Then clone this repository next to tapioca, e.g. in `~/opt/post_processing`. See
 2. Run the scripts **in the folder of the scenario** (they read and write there):
 
    ```
-   python ~/opt/post_processing/track_particles_nc_dk.py
-   python ~/opt/post_processing/plot_PTT_frames_dk.py
+   python ~/opt/post_processing/thermobarometry/track_particles_nc_dk.py
+   python ~/opt/post_processing/thermobarometry/plot_PTT_frames_dk.py
    ```
 
 Or run the whole post-processing of a zipped scenario (extraction, `.nc` files, cleaning of the extracted folders,

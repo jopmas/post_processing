@@ -5,12 +5,12 @@ Scripts and notebooks to post-process Mandyoc models from the NetCDF files creat
 
 ## Layout
 
-- `track_particles_nc_dk.py`, `track_particles_nc_rft.py`: select particles in the final step (double keel and
+- `thermobarometry/track_particles_nc_dk.py`, `thermobarometry/track_particles_nc_rft.py`: select particles in the final step (double keel and
   rifting models), read their trajectories from `particles_trajectories.nc`, interpolate P and T from
   `pressure.nc`/`temperature.nc` and write `_track_xzPT_all_steps.nc`.
-- `plot_PTT_frames_dk.py`, `plot_PTT_frames_rft.py`: frames of the lithology with the P-T-t paths of
+- `thermobarometry/plot_PTT_frames_dk.py`, `thermobarometry/plot_PTT_frames_rft.py`: frames of the lithology with the P-T-t paths of
   `_track_xzPT_all_steps.nc` (temperature-coded for double keel, depth-coded for rifting), videos and gifs.
-- `plot_PTT_frames_rft2.py`: as `plot_PTT_frames_rft.py`, but only with the particles that, in the last step of the
+- `thermobarometry/plot_PTT_frames_rft2.py`: as `plot_PTT_frames_rft.py`, but only with the particles that, in the last step of the
   tracking, are in exhumed lithospheric mantle (mantle right below the air in `lithology.nc`, ignoring an upper crust
   on top thinner than `max_thin_crust_elements` elements, with its pockets of air) thicker than `min_exhumed_elements`
   elements (dz of the Mandyoc mesh) in its column. Outputs with `plot_type` `*_exhumed`. Both rifting scripts color
@@ -39,7 +39,7 @@ Scripts and notebooks to post-process Mandyoc models from the NetCDF files creat
   checking that the main `.nc` files exist; the zip is kept), `plot_snapshots.py` and `frames_generator.py`.
 - `Geometries.ipynb`: a field at chosen instants (plotted with `plot_property`), crustal thickness and width of the
   rifted margins. It has no functions of its own: they are in `functions/mandyocIO.py`.
-- `seismic_section.py`, `seismic_section_parallel.py` (and their notebooks): synthetic seismic sections (see
+- `seismic/seismic_section.py`, `seismic/seismic_section_parallel.py` (and their notebooks): synthetic seismic sections (see
   `docs/source/user_guide/seismic_section.md`). In the parallel version `PROPAGATOR` chooses the wave propagation
   of the zoom: `functions/tremelique_parallel.py` (tremelique, multithreaded with numba) or
   `functions/devito_propagator.py` (Devito, `DevitoZeroOffset`, same interface as `ZeroOffset`).
@@ -112,8 +112,8 @@ no warnings.
 conda activate tapioca                                                   # environment of tapioca
 julia -t 14 ~/opt/tapioca/src/postrunning/meshes2netcdf.jl ${PWD}       # in the folder of the scenario
 julia -t 14 ~/opt/tapioca/src/postrunning/particles2netcdf.jl ${PWD} <reference_step>
-python ~/opt/post_processing/track_particles_nc_dk.py                   # in the folder of the scenario
-python ~/opt/post_processing/plot_PTT_frames_dk.py
+python ~/opt/post_processing/thermobarometry/track_particles_nc_dk.py                   # in the folder of the scenario
+python ~/opt/post_processing/thermobarometry/plot_PTT_frames_dk.py
 bash ~/opt/post_processing/pipeline.sh /path/to/scenario.zip 14             # zip -> .nc, snapshots and video
 cd ~/opt/post_processing/docs && make html                             # documentation in docs/build/html
 ```

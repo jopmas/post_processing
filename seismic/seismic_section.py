@@ -50,7 +50,7 @@ from tremelique._acoustic import nonreflexive_bc, timestep_esg
 from tremelique._utils import apply_damping
 
 # post_processing folder, with functions/mandyocIO.py (lithology colours of the videos)
-sys.path.append(str(Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()))
+sys.path.append(str(Path(__file__).resolve().parent.parent if "__file__" in globals() else Path.cwd().parent))  # post_processing folder (parent of seismic/)
 from functions.mandyocIO import (  # noqa: E402
     COLOR_AST,
     COLOR_BAS,

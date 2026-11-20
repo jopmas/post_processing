@@ -29,7 +29,7 @@ The scripts import `functions/mandyocIO.py` from their own folder, so they can b
 
 ```
 cd /path/to/scenario
-python ~/opt/post_processing/plot_PTT_frames_dk.py
+python ~/opt/post_processing/thermobarometry/plot_PTT_frames_dk.py
 ```
 
 `Geometries.ipynb` imports `functions/mandyocIO.py` from `~/opt/post_processing` (or from the folder where the

@@ -16,7 +16,7 @@ The script runs in the folder of the scenario, like the other scripts:
 
 ```
 cd /path/to/scenario
-python ~/opt/post_processing/seismic_section.py
+python ~/opt/post_processing/seismic/seismic_section.py
 ```
 
 The notebook reads the scenario from `DATA` (cell "Parameters"). It reads `lithology.nc`, `temperature.nc`,
