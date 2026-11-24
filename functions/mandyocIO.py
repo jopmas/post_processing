@@ -625,6 +625,32 @@ def plot_strain_legend(ax, vmin=-0.5, vmax=0.9, alpha=0.2, position=(0.98, 0.2),
 
     return bar
 
+#Layers (name, rheology, title in the legend) of the scenarios of the double_keel scripts (generate_input_files_db_*.py),
+#whose infos_*.txt has no list of the layers (order of LITHOLOGY_COLORS['double_keel'])
+DOUBLE_KEEL_LAYERS = [('asthenosphere', 'wet_olivine', 'Asthenosphere'),
+                      ('lower_cratonic_lithospheric_mantle', 'dry_olivine', 'Lower cratonic lith. mantle'),
+                      ('upper_cratonic_lithospheric_mantle', 'dry_olivine', 'Upper cratonic lith. mantle'),
+                      ('lithospheric_mantle', 'dry_olivine', 'Non-cratonic lith. mantle'),
+                      ('lower_crust', 'wet_quartz', 'Lower crust'),
+                      ('weak_seed', 'wet_quartz', 'Weak seed'),
+                      ('lower_crust', 'wet_quartz', 'Lower crust'),
+                      ('upper_crust', 'wet_quartz', 'Upper crust'),
+                      ('decolement', 'wet_quartz', 'Decolement'),
+                      ('sediments', 'wet_quartz', 'Sediments'),
+                      ('air', 'air', 'Sticky air')]
+
+def _double_keel_layers_properties(model_path):
+    '''
+    (name, rheology, C, density) of the layers (0 = bottom layer) of the scenarios of the double_keel scripts:
+    DOUBLE_KEEL_LAYERS with C and rho of interfaces.txt. Empty for the other scenarios.
+    '''
+    text = _read_scenario_text(model_path, 'infos_*.txt')
+    C = _read_interfaces_parameter(model_path, 'C')
+    rho = _read_interfaces_parameter(model_path, 'rho')
+    if(text is None or 'Double Cratonic Keel' not in text or not len(C) == len(rho) == len(DOUBLE_KEEL_LAYERS)):
+        return []
+    return [(name, rheology, C_i, rho_i) for (name, rheology, title), C_i, rho_i in zip(DOUBLE_KEEL_LAYERS, C, rho)]
+
 def _read_layers_properties_from_infos(model_path):
     '''
     (name, rheology, C, density) of the layers (0 = bottom layer) from infos_*.txt, written by tapioca. Empty if there
@@ -712,8 +738,12 @@ def get_layers_legend(model_path, colors, thickness=True, lithology=None):
     sediment_codes = set(roles.get('sediments', []))
     basalt_codes = set(roles.get('basalt', [])) #extracted magma: zero thickness in the first step
     layers = _read_layers_properties_from_infos(model_path)
+    titles = _read_titles_from_svg(model_path)
+    if(len(layers) == 0): #infos_*.txt without the list of the layers
+        layers = _double_keel_layers_properties(model_path)
+        if(len(layers) > 0):
+            titles = {name: title for name, rheology, title in DOUBLE_KEEL_LAYERS}
     if(len(layers) == number_of_codes):
-        titles = _read_titles_from_svg(model_path)
         groups = {} #name: codes
         for code, (name, rheology, C, rho) in enumerate(layers):
             if('seed' not in name.lower()):
