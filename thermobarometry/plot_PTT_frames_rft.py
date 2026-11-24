@@ -379,7 +379,7 @@ with pymp.Parallel() as p:
                             fig,
                             axs[0,0],
                             plot_isotherms = plot_isotherms,
-                            isotherms = [500, 600, 700, 1300],
+                            isotherms = [550, 700, 800, 1300],
                             topo_from_density=topo_from_density,
                             plot_colorbar=plot_colorbar,
                             bbox_to_anchor=(0.85,#horizontal position respective to parent_bbox or "loc" position
@@ -397,13 +397,13 @@ with pymp.Parallel() as p:
                 # axs[0].pcolormesh(data, cmap=cmap, vmin=0, vmax=5, alpha=1.0)
                 axs[0,0].imshow(data, aspect='auto', extent=(0, Lx/1000, -Lz/1000+40, 40), cmap=cmap, vmin=-0.5, vmax=len(colors)-0.5, alpha=1.0)            
                 axs[0,0].imshow(np.log10(strain_i[::-1,:]), extent=(0, Lx/1000, -Lz/1000+40, 40), cmap="Greys", vmin=-0.5, vmax=0.9, alpha=0.2, aspect='auto')
-                axs[0,0].contour(xx, zz+40, dataset.temperature.isel(time=i), levels=[500, 600, 700, 800, 900, 1300], colors='r', linewidths=1.0)
+                axs[0,0].contour(xx, zz+40, dataset.temperature.isel(time=i), levels=[550, 700, 800, 1300], colors='r', linewidths=1.0)
                 axs[0,0].set_ylim(ylims)
                 axs[0,0].set_xlim(xlims)
 
                 ax3.imshow(data, aspect='auto', extent=(0, Lx/1000, -Lz/1000+40, 40), cmap=cmap, vmin=-0.5, vmax=len(colors)-0.5, alpha=1.0)            
                 ax3.imshow(np.log10(strain_i[::-1,:]), extent=(0, Lx/1000, -Lz/1000+40, 40), cmap="Greys", vmin=-0.5, vmax=0.9, alpha=0.2, aspect='auto')
-                ax3.contour(xx, zz+40, dataset.temperature.isel(time=i), levels=[500, 600, 700, 800, 900, 1300], colors='r', linewidths=1.0)
+                ax3.contour(xx, zz+40, dataset.temperature.isel(time=i), levels=[550, 700, 800, 1300], colors='r', linewidths=1.0)
 
                 #strain legend: a bar with the shading, with fixed size [inches], whatever the size of the figure
                 #(the layers are in the legend below the figure, see plot_layers_legend)

@@ -44,7 +44,7 @@ ylims = [-150, 40] #[km], limits of the lithology. Whole model: None
 gz_step = 50.0 #mGal, the limits of g_z are multiples of it around the minimum and maximum of the whole evolution
 topo_step = 1.0 #km, the same for the topography
 
-isotherms = [500, 600, 700, 800, 900, 1300] #oC
+isotherms = [550, 700, 800, 1300] #oC
 
 stride = 1 #uses one of each stride time steps of _gz_evolution.nc
 

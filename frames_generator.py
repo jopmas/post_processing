@@ -311,7 +311,7 @@ xxA, yyA = np.meshgrid(xA, yA)
 
 chunk_size = 4
 
-isotherms = [500, 600, 700, 800, 900, 1300] #oC
+isotherms = [550, 700, 800, 1300] #oC
 
 xlims = [0, Lx/1000]
 ylims = [-Lz/1000+40, 0+40]

@@ -155,7 +155,7 @@ fig_format = 'jpeg'
 
 chunk_size = 4
 
-isotherms = [500, 600, 700, 800, 900, 1300] #oC
+isotherms = [550, 700, 800, 1300] #oC
 
 xlims = [1600, 2200]
 ylims = [-150, 40]

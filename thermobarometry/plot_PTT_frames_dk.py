@@ -565,7 +565,7 @@ with pymp.Parallel() as p:
         # axs.imshow(np.log10(strain), extent=(0, Lx/1000, -Lz/1000+40, 40), cmap="Greys", vmin=-0.5, vmax=0.9, alpha=0.2)
         axs[0].imshow(np.log10(strain_i[::-1, :]), extent=(0, Lx/1000, -Lz/1000+40, 40), cmap="Greys", vmin=strain_vmin, vmax=strain_vmax, alpha=strain_alpha, aspect='auto')
         # axs[0].imshow(strain.isel(time=i).values[::-1, :], extent=(0, Lx/1000, -Lz/1000+40, 40), cmap="Greys", vmin=-0.5, vmax=0.7, alpha=0.2, aspect='auto')
-        axs[0].contour(x, z+40, temperature.isel(time=i).values, levels=[500, 600, 700, 800, 900, 1300], colors='r', linewidths=1.0)
+        axs[0].contour(x, z+40, temperature.isel(time=i).values, levels=[550, 700, 800, 1300], colors='r', linewidths=1.0)
 
         if(plot_colorbar):
             #strain legend: a bar with the shading, with fixed size [inches], whatever the size of the figure

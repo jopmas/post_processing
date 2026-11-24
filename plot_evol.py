@@ -160,7 +160,7 @@ layers_legend_ncol, layers_legend_height = layers_legend_layout(layers_legend, f
 cmap = ListedColormap(colors)
 np.seterr(divide='ignore')
 
-isotherms = [500, 600, 700, 800, 900, 1300] #oC
+isotherms = [550, 700, 800, 1300] #oC
 
 xlims = [0, Lx/1000]
 ylims = [-Lz/1000+40, 0+40]
